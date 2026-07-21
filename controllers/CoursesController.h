@@ -1,0 +1,16 @@
+#pragma once
+
+#include <drogon/HttpController.h>
+
+class CoursesController
+    : public drogon::HttpController<CoursesController>
+{
+  public:
+    METHOD_LIST_BEGIN
+    ADD_METHOD_TO(CoursesController::list, "/courses", drogon::Get);
+    METHOD_LIST_END
+
+    void list(
+        const drogon::HttpRequestPtr &request,
+        std::function<void(const drogon::HttpResponsePtr &)> &&callback) const;
+};

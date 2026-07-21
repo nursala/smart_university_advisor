@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME:-smart_university_advisor}
+      POSTGRES_USER: ${DB_USER:-advisor}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-advisor_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${DB_USER:-advisor} -d ${DB_NAME:-smart_university_advisor}
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - advisor_network
+
+  api:
+    build: .
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-advisor}
+      DB_PASSWORD: ${DB_PASSWORD:-advisor_password}
+      DB_NAME: ${DB_NAME:-smart_university_advisor}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - advisor_network
+
+volumes:
+  postgres_data:
+
+networks:
+  advisor_network:
