@@ -5,6 +5,8 @@
 
 #include <drogon/drogon.h>
 
+#include "JsonHelpers.h"
+
 namespace
 {
 struct AvailableCourse
@@ -185,21 +187,20 @@ void StudentService::getAvailableCourses(
                 database,
                 studentId,
                 [callback](const drogon::orm::Result &courses) {
-                    Json::Value availableCourses(Json::arrayValue);
-                    for (const auto &row : courses)
-                    {
-                        Json::Value course;
-                        course["id"] = Json::Int64(row["id"].as<int64_t>());
-                        course["code"] = row["code"].as<std::string>();
-                        course["name"] = row["name"].as<std::string>();
-                        course["department"] =
-                            row["department"].as<std::string>();
-                        course["credits"] = row["credits"].as<int>();
-                        course["difficulty_level"] =
-                            row["difficulty_level"].as<std::string>();
-                        availableCourses.append(std::move(course));
-                    }
-                    callback(ServiceResult::ok(std::move(availableCourses)));
+                    callback(ServiceResult::ok(toJsonArray(
+                        courses,
+                        [](const drogon::orm::Row &row) {
+                            Json::Value course;
+                            course["id"] = Json::Int64(row["id"].as<int64_t>());
+                            course["code"] = row["code"].as<std::string>();
+                            course["name"] = row["name"].as<std::string>();
+                            course["department"] =
+                                row["department"].as<std::string>();
+                            course["credits"] = row["credits"].as<int>();
+                            course["difficulty_level"] =
+                                row["difficulty_level"].as<std::string>();
+                            return course;
+                        })));
                 },
                 [callback](const drogon::orm::DrogonDbException &exception) {
                     LOG_ERROR << "Failed to load available courses: "

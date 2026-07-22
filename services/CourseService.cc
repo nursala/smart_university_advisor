@@ -5,6 +5,8 @@
 
 #include <drogon/drogon.h>
 
+#include "JsonHelpers.h"
+
 namespace
 {
 std::string toLower(const std::string &value)
@@ -147,20 +149,18 @@ void CourseService::getCourseDetails(
                 "ORDER BY prerequisite.id",
                 [callback, course = std::move(course)](
                     const drogon::orm::Result &prerequisites) mutable {
-                    Json::Value prerequisiteCourses(Json::arrayValue);
-                    for (const auto &prerequisite : prerequisites)
-                    {
-                        Json::Value prerequisiteCourse;
-                        prerequisiteCourse["code"] =
-                            prerequisite["code"].as<std::string>();
-                        prerequisiteCourse["name"] =
-                            prerequisite["name"].as<std::string>();
-                        prerequisiteCourse["minimum_grade"] =
-                            prerequisite["minimum_grade"].as<double>();
-                        prerequisiteCourses.append(
-                            std::move(prerequisiteCourse));
-                    }
-                    course["prerequisites"] = std::move(prerequisiteCourses);
+                    course["prerequisites"] = toJsonArray(
+                        prerequisites,
+                        [](const drogon::orm::Row &prerequisite) {
+                            Json::Value prerequisiteCourse;
+                            prerequisiteCourse["code"] =
+                                prerequisite["code"].as<std::string>();
+                            prerequisiteCourse["name"] =
+                                prerequisite["name"].as<std::string>();
+                            prerequisiteCourse["minimum_grade"] =
+                                prerequisite["minimum_grade"].as<double>();
+                            return prerequisiteCourse;
+                        });
                     callback(ServiceResult::ok(std::move(course)));
                 },
                 [callback](const drogon::orm::DrogonDbException &exception) {
