@@ -7,7 +7,7 @@
         }
     ],
     "app": {
-        "number_of_threads": 1,
+        "number_of_threads": 4,
         "enable_session": false,
         "document_root": "./public",
         "use_implicit_page": false,

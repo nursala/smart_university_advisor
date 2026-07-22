@@ -23,6 +23,20 @@ unsigned short databasePort()
     }
     return static_cast<unsigned short>(port);
 }
+
+// Matches `number_of_threads` in config.json by default: one DB
+// connection per IO thread avoids threads blocking on each other for a
+// pooled connection under concurrent load.
+std::size_t connectionPoolSize()
+{
+    const auto poolSizeValue = envOrDefault("DB_POOL_SIZE", "4");
+    const auto poolSize = std::stoul(poolSizeValue);
+    if (poolSize == 0)
+    {
+        throw std::out_of_range("DB_POOL_SIZE must be a positive integer");
+    }
+    return poolSize;
+}
 }  // namespace
 
 int main()
@@ -37,7 +51,7 @@ int main()
             envOrDefault("DB_NAME", "smart_university_advisor"),
             envOrDefault("DB_USER", "advisor"),
             envOrDefault("DB_PASSWORD", "advisor_password"),
-            2,
+            connectionPoolSize(),
             "default",
             false,
             "",
