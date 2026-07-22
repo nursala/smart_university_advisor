@@ -1,5 +1,7 @@
 #include "StudentsController.h"
 
+#include <optional>
+
 #include <drogon/drogon.h>
 
 #include "../services/ServiceResultHttp.h"
@@ -59,14 +61,12 @@ void StudentsController::courseRecommendations(
 {
     const auto &body = request->getJsonObject();
 
-    bool hasPreferredDifficulty = false;
-    std::string preferredDifficulty;
+    std::optional<std::string> preferredDifficulty;
     std::string difficultyError;
     if (body &&
         !ValidationHelpers::tryGetOptionalDifficultyField(
             *body,
             "preferred_difficulty",
-            hasPreferredDifficulty,
             preferredDifficulty,
             difficultyError))
     {
@@ -91,7 +91,6 @@ void StudentsController::courseRecommendations(
     StudentService::getCourseRecommendations(
         drogon::app().getDbClient(),
         studentId,
-        hasPreferredDifficulty,
         preferredDifficulty,
         maxRecommendations,
         [callback](ServiceResult result) { callback(toHttpResponse(result)); });
@@ -104,14 +103,12 @@ void StudentsController::semesterPlan(
 {
     const auto &body = request->getJsonObject();
 
-    bool hasPreferredDifficulty = false;
-    std::string preferredDifficulty;
+    std::optional<std::string> preferredDifficulty;
     std::string difficultyError;
     if (body &&
         !ValidationHelpers::tryGetOptionalDifficultyField(
             *body,
             "preferred_difficulty",
-            hasPreferredDifficulty,
             preferredDifficulty,
             difficultyError))
     {
@@ -119,28 +116,26 @@ void StudentsController::semesterPlan(
         return;
     }
 
-    bool hasMaxCredits = false;
-    int64_t maxCredits = 0;
+    std::optional<int64_t> maxCredits;
     if (body && body->isObject() && body->isMember("max_credits") &&
         !(*body)["max_credits"].isNull())
     {
+        int64_t value = 0;
         std::string parseError;
         if (!ValidationHelpers::tryGetInt64(
-                (*body)["max_credits"], maxCredits, parseError))
+                (*body)["max_credits"], value, parseError))
         {
             callback(errorResponse("max_credits must be an integer",
                                    drogon::k400BadRequest));
             return;
         }
-        hasMaxCredits = true;
+        maxCredits = value;
     }
 
     StudentService::buildSemesterPlan(
         drogon::app().getDbClient(),
         studentId,
-        hasPreferredDifficulty,
         preferredDifficulty,
-        hasMaxCredits,
         maxCredits,
         [callback](ServiceResult result) { callback(toHttpResponse(result)); });
 }

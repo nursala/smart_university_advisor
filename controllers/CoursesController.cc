@@ -28,7 +28,6 @@ void CoursesController::list(
     const auto department = request->getParameter("department");
     if (!department.empty())
     {
-        filters.hasDepartment = true;
         filters.department = department;
     }
 
@@ -42,7 +41,6 @@ void CoursesController::list(
             callback(errorResponse(difficultyError, drogon::k400BadRequest));
             return;
         }
-        filters.hasDifficulty = true;
         filters.difficulty = difficulty;
     }
 
@@ -57,7 +55,6 @@ void CoursesController::list(
             {
                 throw std::invalid_argument("trailing characters");
             }
-            filters.hasCredits = true;
             filters.credits = credits;
         }
         catch (const std::exception &)
@@ -71,7 +68,6 @@ void CoursesController::list(
     const auto instructor = request->getParameter("instructor");
     if (!instructor.empty())
     {
-        filters.hasInstructor = true;
         filters.instructor = instructor;
     }
 

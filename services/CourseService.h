@@ -4,23 +4,17 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 
 #include "ServiceResult.h"
 
 struct CourseSearchFilters
 {
-    bool hasDepartment = false;
-    std::string department;
-
-    bool hasDifficulty = false;
-    std::string difficulty;
-
-    bool hasCredits = false;
-    int credits = 0;
-
-    bool hasInstructor = false;
-    std::string instructor;
+    std::optional<std::string> department;
+    std::optional<std::string> difficulty;
+    std::optional<int> credits;
+    std::optional<std::string> instructor;
 };
 
 class CourseService

@@ -30,11 +30,10 @@ bool ValidationHelpers::validateDifficultyString(const std::string &difficulty,
 bool ValidationHelpers::tryGetOptionalDifficultyField(
     const Json::Value &container,
     const std::string &fieldName,
-    bool &hasValue,
-    std::string &value,
+    std::optional<std::string> &value,
     std::string &error)
 {
-    hasValue = false;
+    value.reset();
     if (!container.isObject() || !container.isMember(fieldName) ||
         container[fieldName].isNull())
     {
@@ -49,6 +48,5 @@ bool ValidationHelpers::tryGetOptionalDifficultyField(
         return false;
     }
     value = fieldValue.asString();
-    hasValue = true;
     return true;
 }

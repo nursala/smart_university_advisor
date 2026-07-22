@@ -47,23 +47,24 @@ void CourseService::searchCourses(
                         ? std::string()
                         : row["instructor_name"].as<std::string>();
 
-                if (filters.hasDepartment &&
-                    toLower(department) != toLower(filters.department))
+                if (filters.department.has_value() &&
+                    toLower(department) != toLower(filters.department.value()))
                 {
                     continue;
                 }
-                if (filters.hasDifficulty &&
-                    difficultyLevel != filters.difficulty)
+                if (filters.difficulty.has_value() &&
+                    difficultyLevel != filters.difficulty.value())
                 {
                     continue;
                 }
-                if (filters.hasCredits && credits != filters.credits)
+                if (filters.credits.has_value() &&
+                    credits != filters.credits.value())
                 {
                     continue;
                 }
-                if (filters.hasInstructor &&
+                if (filters.instructor.has_value() &&
                     !containsCaseInsensitive(instructorName,
-                                             filters.instructor))
+                                             filters.instructor.value()))
                 {
                     continue;
                 }

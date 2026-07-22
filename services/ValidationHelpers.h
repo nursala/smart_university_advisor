@@ -3,6 +3,7 @@
 #include <json/json.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 // Shared parameter-validation glue used by controllers and ToolRegistry so
@@ -26,13 +27,12 @@ bool validateDifficultyString(const std::string &difficulty,
                               std::string &error);
 
 // Looks up `fieldName` in `container` (a JSON object) as an optional
-// difficulty-enum string. If the field is absent or null, `hasValue` is
-// set to false and this returns true (nothing to validate). If present, it
-// must be a string that is a valid difficulty value; otherwise this
-// returns false with `error` set.
+// difficulty-enum string. If the field is absent or null, `value` is set
+// to std::nullopt and this returns true (nothing to validate). If
+// present, it must be a string that is a valid difficulty value;
+// otherwise this returns false with `error` set.
 bool tryGetOptionalDifficultyField(const Json::Value &container,
                                    const std::string &fieldName,
-                                   bool &hasValue,
-                                   std::string &value,
+                                   std::optional<std::string> &value,
                                    std::string &error);
 }  // namespace ValidationHelpers

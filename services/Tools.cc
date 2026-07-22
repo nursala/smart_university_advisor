@@ -1,6 +1,7 @@
 #include "Tools.h"
 
 #include <limits>
+#include <optional>
 
 #include <drogon/drogon.h>
 
@@ -34,11 +35,10 @@ bool tryGetCourseId(const Json::Value &args, int64_t &courseId, std::string &err
 }
 
 bool tryGetOptionalDifficulty(const Json::Value &args,
-                              bool &hasDifficulty,
-                              std::string &difficulty,
+                              std::optional<std::string> &difficulty,
                               std::string &error)
 {
-    hasDifficulty = false;
+    difficulty.reset();
     if (!args.isObject() ||
         !(args.isMember("preferred_difficulty") ||
           args.isMember("difficulty")))
@@ -61,7 +61,6 @@ bool tryGetOptionalDifficulty(const Json::Value &args,
         return false;
     }
     difficulty = value.asString();
-    hasDifficulty = true;
     return true;
 }
 
@@ -237,9 +236,8 @@ void GetCourseRecommendationsTool::execute(
         callback(toolFailure(error));
         return;
     }
-    bool hasDifficulty = false;
-    std::string difficulty;
-    if (!tryGetOptionalDifficulty(args, hasDifficulty, difficulty, error))
+    std::optional<std::string> difficulty;
+    if (!tryGetOptionalDifficulty(args, difficulty, error))
     {
         callback(toolFailure(error));
         return;
@@ -258,7 +256,6 @@ void GetCourseRecommendationsTool::execute(
     StudentService::getCourseRecommendations(
         database,
         studentId,
-        hasDifficulty,
         difficulty,
         maxRecommendations,
         [callback](ServiceResult result) { callback(toToolResult(result)); });
@@ -299,32 +296,28 @@ void BuildSemesterPlanTool::execute(
         callback(toolFailure(error));
         return;
     }
-    bool hasDifficulty = false;
-    std::string difficulty;
-    if (!tryGetOptionalDifficulty(args, hasDifficulty, difficulty, error))
+    std::optional<std::string> difficulty;
+    if (!tryGetOptionalDifficulty(args, difficulty, error))
     {
         callback(toolFailure(error));
         return;
     }
-    bool hasMaxCredits = false;
-    int64_t maxCredits = 0;
+    std::optional<int64_t> maxCredits;
     if (args.isObject() && args.isMember("max_credits") &&
         !args["max_credits"].isNull())
     {
-        if (!ValidationHelpers::tryGetInt64(
-                args["max_credits"], maxCredits, error))
+        int64_t value = 0;
+        if (!ValidationHelpers::tryGetInt64(args["max_credits"], value, error))
         {
             callback(toolFailure("max_credits must be an integer"));
             return;
         }
-        hasMaxCredits = true;
+        maxCredits = value;
     }
     StudentService::buildSemesterPlan(
         database,
         studentId,
-        hasDifficulty,
         difficulty,
-        hasMaxCredits,
         maxCredits,
         [callback](ServiceResult result) { callback(toToolResult(result)); });
 }
@@ -453,18 +446,13 @@ void SearchCoursesTool::execute(
     if (args.isObject() && args.isMember("department") &&
         args["department"].isString() && !args["department"].asString().empty())
     {
-        filters.hasDepartment = true;
         filters.department = args["department"].asString();
     }
-    bool hasDifficulty = false;
-    std::string difficulty;
-    if (!tryGetOptionalDifficulty(args, hasDifficulty, difficulty, error))
+    if (!tryGetOptionalDifficulty(args, filters.difficulty, error))
     {
         callback(toolFailure(error));
         return;
     }
-    filters.hasDifficulty = hasDifficulty;
-    filters.difficulty = difficulty;
     if (args.isObject() && args.isMember("credits") &&
         !args["credits"].isNull())
     {
@@ -477,13 +465,11 @@ void SearchCoursesTool::execute(
             callback(toolFailure("credits must be an integer"));
             return;
         }
-        filters.hasCredits = true;
         filters.credits = static_cast<int>(creditsValue);
     }
     if (args.isObject() && args.isMember("instructor") &&
         args["instructor"].isString() && !args["instructor"].asString().empty())
     {
-        filters.hasInstructor = true;
         filters.instructor = args["instructor"].asString();
     }
     CourseService::searchCourses(

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,18 +33,15 @@ class StudentService
     static void getCourseRecommendations(
         const drogon::orm::DbClientPtr &database,
         int64_t studentId,
-        bool hasPreferredDifficulty,
-        const std::string &preferredDifficulty,
+        const std::optional<std::string> &preferredDifficulty,
         int64_t maxRecommendations,
         std::function<void(ServiceResult)> &&callback);
 
     static void buildSemesterPlan(
         const drogon::orm::DbClientPtr &database,
         int64_t studentId,
-        bool hasPreferredDifficulty,
-        const std::string &preferredDifficulty,
-        bool hasMaxCredits,
-        int64_t maxCredits,
+        const std::optional<std::string> &preferredDifficulty,
+        const std::optional<int64_t> &maxCredits,
         std::function<void(ServiceResult)> &&callback);
 
     static void analyzeRisk(

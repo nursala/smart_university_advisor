@@ -219,8 +219,7 @@ void StudentService::getAvailableCourses(
 void StudentService::getCourseRecommendations(
     const drogon::orm::DbClientPtr &database,
     int64_t studentId,
-    bool hasPreferredDifficulty,
-    const std::string &preferredDifficulty,
+    const std::optional<std::string> &preferredDifficulty,
     int64_t maxRecommendations,
     std::function<void(ServiceResult)> &&callback)
 {
@@ -229,7 +228,6 @@ void StudentService::getCourseRecommendations(
         [database,
          callback,
          studentId,
-         hasPreferredDifficulty,
          preferredDifficulty,
          maxRecommendations](const drogon::orm::Result &students) {
             if (students.empty())
@@ -247,7 +245,6 @@ void StudentService::getCourseRecommendations(
                 [callback,
                  studentId,
                  currentGpa,
-                 hasPreferredDifficulty,
                  preferredDifficulty,
                  maxRecommendations](const drogon::orm::Result &courses) {
                     auto availableCourses = toAvailableCourses(courses);
@@ -257,8 +254,8 @@ void StudentService::getCourseRecommendations(
                     {
                         const auto &course = availableCourses[i];
                         int score = 0;
-                        if (hasPreferredDifficulty &&
-                            course.difficultyLevel == preferredDifficulty)
+                        if (preferredDifficulty.has_value() &&
+                            course.difficultyLevel == preferredDifficulty.value())
                         {
                             score += 30;
                         }
@@ -351,10 +348,8 @@ void StudentService::getCourseRecommendations(
 void StudentService::buildSemesterPlan(
     const drogon::orm::DbClientPtr &database,
     int64_t studentId,
-    bool hasPreferredDifficulty,
-    const std::string &preferredDifficulty,
-    bool hasMaxCredits,
-    int64_t maxCredits,
+    const std::optional<std::string> &preferredDifficulty,
+    const std::optional<int64_t> &maxCredits,
     std::function<void(ServiceResult)> &&callback)
 {
     database->execSqlAsync(
@@ -362,9 +357,7 @@ void StudentService::buildSemesterPlan(
         [database,
          callback,
          studentId,
-         hasPreferredDifficulty,
          preferredDifficulty,
-         hasMaxCredits,
          maxCredits](const drogon::orm::Result &students) {
             if (students.empty())
             {
@@ -372,17 +365,14 @@ void StudentService::buildSemesterPlan(
                 return;
             }
 
-            const int64_t effectiveMaxCredits =
-                hasMaxCredits
-                    ? maxCredits
-                    : students.front()["max_weekly_credits"].as<int64_t>();
+            const int64_t effectiveMaxCredits = maxCredits.value_or(
+                students.front()["max_weekly_credits"].as<int64_t>());
 
             fetchAvailableCourses(
                 database,
                 studentId,
                 [callback,
                  studentId,
-                 hasPreferredDifficulty,
                  preferredDifficulty,
                  effectiveMaxCredits](const drogon::orm::Result &courses) {
                     auto availableCourses = toAvailableCourses(courses);
@@ -396,16 +386,15 @@ void StudentService::buildSemesterPlan(
                         order.begin(),
                         order.end(),
                         [&availableCourses,
-                         hasPreferredDifficulty,
                          &preferredDifficulty](size_t a, size_t b) {
                             const bool matchesA =
-                                hasPreferredDifficulty &&
+                                preferredDifficulty.has_value() &&
                                 availableCourses[a].difficultyLevel ==
-                                    preferredDifficulty;
+                                    preferredDifficulty.value();
                             const bool matchesB =
-                                hasPreferredDifficulty &&
+                                preferredDifficulty.has_value() &&
                                 availableCourses[b].difficultyLevel ==
-                                    preferredDifficulty;
+                                    preferredDifficulty.value();
                             if (matchesA != matchesB)
                             {
                                 return matchesA;
