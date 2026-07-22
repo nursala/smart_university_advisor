@@ -8,6 +8,7 @@
 
 #include "../services/GeminiClient.h"
 #include "../services/ToolRegistry.h"
+#include "../services/ValidationHelpers.h"
 
 namespace
 {
@@ -181,9 +182,12 @@ void AgentController::query(
     std::function<void(const drogon::HttpResponsePtr &)> &&callback) const
 {
     const auto &body = request->getJsonObject();
+    int64_t studentId = 0;
+    std::string parseError;
     if (!body || !body->isObject() || !body->isMember("student_id") ||
-        !(*body)["student_id"].isIntegral() ||
-        (*body)["student_id"].asInt64() <= 0 || !body->isMember("message") ||
+        !ValidationHelpers::tryGetInt64(
+            (*body)["student_id"], studentId, parseError) ||
+        studentId <= 0 || !body->isMember("message") ||
         !(*body)["message"].isString() || (*body)["message"].asString().empty())
     {
         callback(errorResponse(
@@ -193,7 +197,6 @@ void AgentController::query(
         return;
     }
 
-    const auto studentId = (*body)["student_id"].asInt64();
     const auto message = (*body)["message"].asString();
 
     std::shared_ptr<GeminiClient> geminiClient;

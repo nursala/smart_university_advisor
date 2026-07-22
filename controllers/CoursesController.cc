@@ -4,7 +4,7 @@
 
 #include "../services/CourseService.h"
 #include "../services/ServiceResultHttp.h"
-#include "../services/StudentService.h"
+#include "../services/ValidationHelpers.h"
 
 namespace
 {
@@ -35,10 +35,11 @@ void CoursesController::list(
     const auto difficulty = request->getParameter("difficulty");
     if (!difficulty.empty())
     {
-        if (!StudentService::isValidDifficulty(difficulty))
+        std::string difficultyError;
+        if (!ValidationHelpers::validateDifficultyString(
+                difficulty, "difficulty", difficultyError))
         {
-            callback(errorResponse("difficulty must be one of: easy, medium, hard",
-                                   drogon::k400BadRequest));
+            callback(errorResponse(difficultyError, drogon::k400BadRequest));
             return;
         }
         filters.hasDifficulty = true;

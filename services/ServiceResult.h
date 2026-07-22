@@ -10,8 +10,10 @@ struct ServiceResult
     enum class Status
     {
         Ok,
+        Created,
         NotFound,
         BadRequest,
+        Conflict,
         Error
     };
 
@@ -24,6 +26,11 @@ struct ServiceResult
         return ServiceResult{Status::Ok, std::move(resultData), ""};
     }
 
+    static ServiceResult created(Json::Value resultData)
+    {
+        return ServiceResult{Status::Created, std::move(resultData), ""};
+    }
+
     static ServiceResult notFound(std::string errorMessage)
     {
         return ServiceResult{
@@ -34,6 +41,12 @@ struct ServiceResult
     {
         return ServiceResult{
             Status::BadRequest, Json::Value(), std::move(errorMessage)};
+    }
+
+    static ServiceResult conflict(std::string errorMessage)
+    {
+        return ServiceResult{
+            Status::Conflict, Json::Value(), std::move(errorMessage)};
     }
 
     static ServiceResult error(std::string errorMessage)

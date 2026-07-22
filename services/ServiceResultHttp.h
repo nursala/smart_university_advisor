@@ -6,9 +6,15 @@
 
 inline drogon::HttpResponsePtr toHttpResponse(const ServiceResult &result)
 {
-    if (result.status == ServiceResult::Status::Ok)
+    if (result.status == ServiceResult::Status::Ok ||
+        result.status == ServiceResult::Status::Created)
     {
-        return drogon::HttpResponse::newHttpJsonResponse(result.data);
+        auto response = drogon::HttpResponse::newHttpJsonResponse(result.data);
+        if (result.status == ServiceResult::Status::Created)
+        {
+            response->setStatusCode(drogon::k201Created);
+        }
+        return response;
     }
 
     Json::Value error;
@@ -21,6 +27,9 @@ inline drogon::HttpResponsePtr toHttpResponse(const ServiceResult &result)
             break;
         case ServiceResult::Status::BadRequest:
             response->setStatusCode(drogon::k400BadRequest);
+            break;
+        case ServiceResult::Status::Conflict:
+            response->setStatusCode(drogon::k409Conflict);
             break;
         default:
             response->setStatusCode(drogon::k500InternalServerError);

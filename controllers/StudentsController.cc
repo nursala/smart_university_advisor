@@ -4,6 +4,7 @@
 
 #include "../services/ServiceResultHttp.h"
 #include "../services/StudentService.h"
+#include "../services/ValidationHelpers.h"
 
 namespace
 {
@@ -60,33 +61,31 @@ void StudentsController::courseRecommendations(
 
     bool hasPreferredDifficulty = false;
     std::string preferredDifficulty;
-    if (body && body->isObject() && body->isMember("preferred_difficulty") &&
-        !(*body)["preferred_difficulty"].isNull())
+    std::string difficultyError;
+    if (body &&
+        !ValidationHelpers::tryGetOptionalDifficultyField(
+            *body,
+            "preferred_difficulty",
+            hasPreferredDifficulty,
+            preferredDifficulty,
+            difficultyError))
     {
-        if (!(*body)["preferred_difficulty"].isString() ||
-            !StudentService::isValidDifficulty(
-                (*body)["preferred_difficulty"].asString()))
-        {
-            callback(errorResponse(
-                "preferred_difficulty must be one of: easy, medium, hard",
-                drogon::k400BadRequest));
-            return;
-        }
-        preferredDifficulty = (*body)["preferred_difficulty"].asString();
-        hasPreferredDifficulty = true;
+        callback(errorResponse(difficultyError, drogon::k400BadRequest));
+        return;
     }
 
     int64_t maxRecommendations = 3;
     if (body && body->isObject() && body->isMember("max_recommendations") &&
         !(*body)["max_recommendations"].isNull())
     {
-        if (!(*body)["max_recommendations"].isIntegral())
+        std::string parseError;
+        if (!ValidationHelpers::tryGetInt64(
+                (*body)["max_recommendations"], maxRecommendations, parseError))
         {
             callback(errorResponse("max_recommendations must be an integer",
                                    drogon::k400BadRequest));
             return;
         }
-        maxRecommendations = (*body)["max_recommendations"].asInt64();
     }
 
     StudentService::getCourseRecommendations(
@@ -107,20 +106,17 @@ void StudentsController::semesterPlan(
 
     bool hasPreferredDifficulty = false;
     std::string preferredDifficulty;
-    if (body && body->isObject() && body->isMember("preferred_difficulty") &&
-        !(*body)["preferred_difficulty"].isNull())
+    std::string difficultyError;
+    if (body &&
+        !ValidationHelpers::tryGetOptionalDifficultyField(
+            *body,
+            "preferred_difficulty",
+            hasPreferredDifficulty,
+            preferredDifficulty,
+            difficultyError))
     {
-        if (!(*body)["preferred_difficulty"].isString() ||
-            !StudentService::isValidDifficulty(
-                (*body)["preferred_difficulty"].asString()))
-        {
-            callback(errorResponse(
-                "preferred_difficulty must be one of: easy, medium, hard",
-                drogon::k400BadRequest));
-            return;
-        }
-        preferredDifficulty = (*body)["preferred_difficulty"].asString();
-        hasPreferredDifficulty = true;
+        callback(errorResponse(difficultyError, drogon::k400BadRequest));
+        return;
     }
 
     bool hasMaxCredits = false;
@@ -128,13 +124,14 @@ void StudentsController::semesterPlan(
     if (body && body->isObject() && body->isMember("max_credits") &&
         !(*body)["max_credits"].isNull())
     {
-        if (!(*body)["max_credits"].isIntegral())
+        std::string parseError;
+        if (!ValidationHelpers::tryGetInt64(
+                (*body)["max_credits"], maxCredits, parseError))
         {
             callback(errorResponse("max_credits must be an integer",
                                    drogon::k400BadRequest));
             return;
         }
-        maxCredits = (*body)["max_credits"].asInt64();
         hasMaxCredits = true;
     }
 
@@ -184,14 +181,17 @@ void StudentsController::riskAnalysis(
             courseIds.reserve(courseIdsJson.size());
             for (const auto &element : courseIdsJson)
             {
-                if (!element.isIntegral())
+                int64_t courseIdValue = 0;
+                std::string parseError;
+                if (!ValidationHelpers::tryGetInt64(
+                        element, courseIdValue, parseError))
                 {
                     callback(errorResponse(
                         "course_ids must contain only integers",
                         drogon::k400BadRequest));
                     return;
                 }
-                courseIds.push_back(element.asInt64());
+                courseIds.push_back(courseIdValue);
             }
 
             StudentService::analyzeRisk(

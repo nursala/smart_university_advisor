@@ -1,10 +1,13 @@
 #include "ToolRegistry.h"
 
+#include <limits>
+
 #include <drogon/drogon.h>
 
 #include "CourseService.h"
 #include "ServiceResult.h"
 #include "StudentService.h"
+#include "ValidationHelpers.h"
 
 namespace
 {
@@ -35,24 +38,22 @@ Json::Value toolFailure(const std::string &message)
 bool tryGetStudentId(const Json::Value &args, int64_t &studentId, std::string &error)
 {
     if (!args.isObject() || !args.isMember("student_id") ||
-        !args["student_id"].isIntegral())
+        !ValidationHelpers::tryGetInt64(args["student_id"], studentId, error))
     {
         error = "student_id is required and must be an integer";
         return false;
     }
-    studentId = args["student_id"].asInt64();
     return true;
 }
 
 bool tryGetCourseId(const Json::Value &args, int64_t &courseId, std::string &error)
 {
     if (!args.isObject() || !args.isMember("course_id") ||
-        !args["course_id"].isIntegral())
+        !ValidationHelpers::tryGetInt64(args["course_id"], courseId, error))
     {
         error = "course_id is required and must be an integer";
         return false;
     }
-    courseId = args["course_id"].asInt64();
     return true;
 }
 
@@ -76,7 +77,9 @@ bool tryGetOptionalDifficulty(const Json::Value &args,
     {
         return true;
     }
-    if (!value.isString() || !StudentService::isValidDifficulty(value.asString()))
+    if (!value.isString() ||
+        !ValidationHelpers::validateDifficultyString(
+            value.asString(), "difficulty", error))
     {
         error = "difficulty must be one of: easy, medium, hard";
         return false;
@@ -282,11 +285,12 @@ Json::Value ToolRegistry::toolDeclarations()
     return declarations;
 }
 
-void ToolRegistry::execute(
-    const drogon::orm::DbClientPtr &database,
-    const std::string &toolName,
-    const Json::Value &args,
-    std::function<void(Json::Value)> &&callback)
+namespace
+{
+void executeImpl(const drogon::orm::DbClientPtr &database,
+                 const std::string &toolName,
+                 const Json::Value &args,
+                 const std::function<void(Json::Value)> &callback)
 {
     std::string error;
 
@@ -354,12 +358,12 @@ void ToolRegistry::execute(
         if (args.isObject() && args.isMember("max_recommendations") &&
             !args["max_recommendations"].isNull())
         {
-            if (!args["max_recommendations"].isIntegral())
+            if (!ValidationHelpers::tryGetInt64(
+                    args["max_recommendations"], maxRecommendations, error))
             {
                 callback(toolFailure("max_recommendations must be an integer"));
                 return;
             }
-            maxRecommendations = args["max_recommendations"].asInt64();
         }
         StudentService::getCourseRecommendations(
             database,
@@ -391,12 +395,12 @@ void ToolRegistry::execute(
         if (args.isObject() && args.isMember("max_credits") &&
             !args["max_credits"].isNull())
         {
-            if (!args["max_credits"].isIntegral())
+            if (!ValidationHelpers::tryGetInt64(
+                    args["max_credits"], maxCredits, error))
             {
                 callback(toolFailure("max_credits must be an integer"));
                 return;
             }
-            maxCredits = args["max_credits"].asInt64();
             hasMaxCredits = true;
         }
         StudentService::buildSemesterPlan(
@@ -428,12 +432,13 @@ void ToolRegistry::execute(
         courseIds.reserve(args["course_ids"].size());
         for (const auto &element : args["course_ids"])
         {
-            if (!element.isIntegral())
+            int64_t courseIdValue = 0;
+            if (!ValidationHelpers::tryGetInt64(element, courseIdValue, error))
             {
                 callback(toolFailure("course_ids must contain only integers"));
                 return;
             }
-            courseIds.push_back(element.asInt64());
+            courseIds.push_back(courseIdValue);
         }
         StudentService::analyzeRisk(
             database,
@@ -479,13 +484,17 @@ void ToolRegistry::execute(
         if (args.isObject() && args.isMember("credits") &&
             !args["credits"].isNull())
         {
-            if (!args["credits"].isIntegral())
+            int64_t creditsValue = 0;
+            if (!ValidationHelpers::tryGetInt64(
+                    args["credits"], creditsValue, error) ||
+                creditsValue < std::numeric_limits<int>::min() ||
+                creditsValue > std::numeric_limits<int>::max())
             {
                 callback(toolFailure("credits must be an integer"));
                 return;
             }
             filters.hasCredits = true;
-            filters.credits = args["credits"].asInt();
+            filters.credits = static_cast<int>(creditsValue);
         }
         if (args.isObject() && args.isMember("instructor") &&
             args["instructor"].isString() && !args["instructor"].asString().empty())
@@ -501,4 +510,27 @@ void ToolRegistry::execute(
     }
 
     callback(toolFailure("Unknown tool: " + toolName));
+}
+}  // namespace
+
+void ToolRegistry::execute(
+    const drogon::orm::DbClientPtr &database,
+    const std::string &toolName,
+    const Json::Value &args,
+    std::function<void(Json::Value)> &&callback)
+{
+    // Defense-in-depth backstop: every known validation gap is closed at
+    // its call site above, but a future one degrading to a clean
+    // tool-level error (instead of an uncaught exception surfacing in the
+    // async Gemini-response callback in AgentController) is much safer
+    // than crashing the process.
+    try
+    {
+        executeImpl(database, toolName, args, callback);
+    }
+    catch (const std::exception &exception)
+    {
+        callback(toolFailure(std::string("Unexpected tool error: ") +
+                             exception.what()));
+    }
 }
