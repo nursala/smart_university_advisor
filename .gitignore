@@ -566,3 +566,8 @@ FodyWeavers.xsd
 .wolf/
 .vscode/
 CLAUDE.md
+
+### Secrets ###
+.env
+.env.*
+!.env.example

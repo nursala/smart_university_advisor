@@ -1,0 +1,655 @@
+#include "StudentService.h"
+
+#include <algorithm>
+#include <map>
+
+#include <drogon/drogon.h>
+
+namespace
+{
+struct AvailableCourse
+{
+    int64_t id;
+    std::string code;
+    std::string name;
+    std::string department;
+    int credits;
+    std::string difficultyLevel;
+    int estimatedWeeklyHours;
+};
+
+std::vector<AvailableCourse> toAvailableCourses(
+    const drogon::orm::Result &courses)
+{
+    std::vector<AvailableCourse> result;
+    result.reserve(courses.size());
+    for (const auto &row : courses)
+    {
+        AvailableCourse course;
+        course.id = row["id"].as<int64_t>();
+        course.code = row["code"].as<std::string>();
+        course.name = row["name"].as<std::string>();
+        course.department = row["department"].as<std::string>();
+        course.credits = row["credits"].as<int>();
+        course.difficultyLevel = row["difficulty_level"].as<std::string>();
+        course.estimatedWeeklyHours =
+            row["estimated_weekly_hours"].as<int>();
+        result.push_back(std::move(course));
+    }
+    return result;
+}
+}  // namespace
+
+bool StudentService::isValidDifficulty(const std::string &difficulty)
+{
+    return difficulty == "easy" || difficulty == "medium" ||
+           difficulty == "hard";
+}
+
+void StudentService::fetchAvailableCourses(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    std::function<void(const drogon::orm::Result &)> &&onSuccess,
+    std::function<void(const drogon::orm::DrogonDbException &)> &&onError)
+{
+    database->execSqlAsync(
+        "SELECT c.id, c.code, c.name, c.department, c.credits, "
+        "c.difficulty_level, c.estimated_weekly_hours "
+        "FROM courses c "
+        "WHERE NOT EXISTS ("
+        "SELECT 1 FROM enrollments e "
+        "WHERE e.student_id = $1 AND e.course_id = c.id "
+        "AND e.status IN ('active', 'completed')) "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM course_prerequisites cp "
+        "WHERE cp.course_id = c.id "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM enrollments e "
+        "JOIN grades g ON g.enrollment_id = e.id "
+        "WHERE e.student_id = $2 "
+        "AND e.course_id = cp.prerequisite_course_id "
+        "AND e.status = 'completed' "
+        "AND g.grade >= cp.minimum_grade)) "
+        "ORDER BY c.id",
+        std::move(onSuccess),
+        std::move(onError),
+        studentId,
+        studentId);
+}
+
+void StudentService::getProfile(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    std::function<void(ServiceResult)> &&callback)
+{
+    database->execSqlAsync(
+        "SELECT s.id, s.student_number, s.department, s.year_level, "
+        "s.current_gpa, s.max_weekly_credits, u.name, u.email "
+        "FROM students s "
+        "JOIN users u ON u.id = s.user_id "
+        "WHERE s.id = $1",
+        [callback](const drogon::orm::Result &result) {
+            if (result.empty())
+            {
+                callback(ServiceResult::notFound("Student not found"));
+                return;
+            }
+
+            const auto &row = result.front();
+            Json::Value student;
+            student["id"] = Json::Int64(row["id"].as<int64_t>());
+            student["student_number"] =
+                row["student_number"].as<std::string>();
+            student["department"] = row["department"].as<std::string>();
+            student["year_level"] = row["year_level"].as<int>();
+            student["current_gpa"] = row["current_gpa"].as<double>();
+            student["max_weekly_credits"] =
+                row["max_weekly_credits"].as<int>();
+            student["name"] = row["name"].as<std::string>();
+            student["email"] = row["email"].as<std::string>();
+            callback(ServiceResult::ok(std::move(student)));
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to load student profile: "
+                      << exception.base().what();
+            callback(ServiceResult::error("Unable to load student profile"));
+        },
+        studentId);
+}
+
+void StudentService::getAcademicSummary(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    std::function<void(ServiceResult)> &&callback)
+{
+    database->execSqlAsync(
+        "SELECT s.current_gpa, "
+        "COUNT(e.id) FILTER (WHERE e.status = 'completed' "
+        "AND g.passed = TRUE) AS completed_courses_count, "
+        "COUNT(e.id) FILTER (WHERE e.status = 'active') "
+        "AS active_courses_count, "
+        "COUNT(e.id) FILTER (WHERE e.status = 'completed' "
+        "AND g.passed = FALSE) AS failed_courses_count, "
+        "COALESCE(SUM(c.credits) FILTER (WHERE e.status = 'completed' "
+        "AND g.passed = TRUE), 0) AS completed_credits "
+        "FROM students s "
+        "LEFT JOIN enrollments e ON e.student_id = s.id "
+        "LEFT JOIN grades g ON g.enrollment_id = e.id "
+        "LEFT JOIN courses c ON c.id = e.course_id "
+        "WHERE s.id = $1 "
+        "GROUP BY s.id, s.current_gpa",
+        [callback](const drogon::orm::Result &result) {
+            if (result.empty())
+            {
+                callback(ServiceResult::notFound("Student not found"));
+                return;
+            }
+
+            const auto &row = result.front();
+            Json::Value summary;
+            summary["current_gpa"] = row["current_gpa"].as<double>();
+            summary["completed_courses_count"] = Json::Int64(
+                row["completed_courses_count"].as<int64_t>());
+            summary["active_courses_count"] =
+                Json::Int64(row["active_courses_count"].as<int64_t>());
+            summary["failed_courses_count"] =
+                Json::Int64(row["failed_courses_count"].as<int64_t>());
+            summary["completed_credits"] =
+                Json::Int64(row["completed_credits"].as<int64_t>());
+            callback(ServiceResult::ok(std::move(summary)));
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to load academic summary: "
+                      << exception.base().what();
+            callback(
+                ServiceResult::error("Unable to load academic summary"));
+        },
+        studentId);
+}
+
+void StudentService::getAvailableCourses(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    std::function<void(ServiceResult)> &&callback)
+{
+    database->execSqlAsync(
+        "SELECT id FROM students WHERE id = $1",
+        [database, callback, studentId](const drogon::orm::Result &students) {
+            if (students.empty())
+            {
+                callback(ServiceResult::notFound("Student not found"));
+                return;
+            }
+
+            fetchAvailableCourses(
+                database,
+                studentId,
+                [callback](const drogon::orm::Result &courses) {
+                    Json::Value availableCourses(Json::arrayValue);
+                    for (const auto &row : courses)
+                    {
+                        Json::Value course;
+                        course["id"] = Json::Int64(row["id"].as<int64_t>());
+                        course["code"] = row["code"].as<std::string>();
+                        course["name"] = row["name"].as<std::string>();
+                        course["department"] =
+                            row["department"].as<std::string>();
+                        course["credits"] = row["credits"].as<int>();
+                        course["difficulty_level"] =
+                            row["difficulty_level"].as<std::string>();
+                        availableCourses.append(std::move(course));
+                    }
+                    callback(ServiceResult::ok(std::move(availableCourses)));
+                },
+                [callback](const drogon::orm::DrogonDbException &exception) {
+                    LOG_ERROR << "Failed to load available courses: "
+                              << exception.base().what();
+                    callback(ServiceResult::error(
+                        "Unable to load available courses"));
+                });
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to validate student: "
+                      << exception.base().what();
+            callback(ServiceResult::error("Unable to load available courses"));
+        },
+        studentId);
+}
+
+void StudentService::getCourseRecommendations(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    bool hasPreferredDifficulty,
+    const std::string &preferredDifficulty,
+    int64_t maxRecommendations,
+    std::function<void(ServiceResult)> &&callback)
+{
+    database->execSqlAsync(
+        "SELECT id, current_gpa FROM students WHERE id = $1",
+        [database,
+         callback,
+         studentId,
+         hasPreferredDifficulty,
+         preferredDifficulty,
+         maxRecommendations](const drogon::orm::Result &students) {
+            if (students.empty())
+            {
+                callback(ServiceResult::notFound("Student not found"));
+                return;
+            }
+
+            const auto currentGpa =
+                students.front()["current_gpa"].as<double>();
+
+            fetchAvailableCourses(
+                database,
+                studentId,
+                [callback,
+                 studentId,
+                 currentGpa,
+                 hasPreferredDifficulty,
+                 preferredDifficulty,
+                 maxRecommendations](const drogon::orm::Result &courses) {
+                    auto availableCourses = toAvailableCourses(courses);
+
+                    std::vector<int> scores(availableCourses.size(), 0);
+                    for (size_t i = 0; i < availableCourses.size(); ++i)
+                    {
+                        const auto &course = availableCourses[i];
+                        int score = 0;
+                        if (hasPreferredDifficulty &&
+                            course.difficultyLevel == preferredDifficulty)
+                        {
+                            score += 30;
+                        }
+
+                        if (currentGpa < 70)
+                        {
+                            if (course.difficultyLevel == "easy")
+                                score += 25;
+                            else if (course.difficultyLevel == "medium")
+                                score += 15;
+                        }
+                        else if (currentGpa <= 85)
+                        {
+                            if (course.difficultyLevel == "easy")
+                                score += 10;
+                            else if (course.difficultyLevel == "medium")
+                                score += 25;
+                            else if (course.difficultyLevel == "hard")
+                                score += 15;
+                        }
+                        else
+                        {
+                            if (course.difficultyLevel == "easy")
+                                score += 10;
+                            else if (course.difficultyLevel == "medium")
+                                score += 20;
+                            else if (course.difficultyLevel == "hard")
+                                score += 25;
+                        }
+
+                        score += std::max(0, 10 - course.credits);
+                        scores[i] = score;
+                    }
+
+                    std::vector<size_t> order(availableCourses.size());
+                    for (size_t i = 0; i < order.size(); ++i)
+                    {
+                        order[i] = i;
+                    }
+                    std::stable_sort(
+                        order.begin(),
+                        order.end(),
+                        [&scores](size_t a, size_t b) {
+                            return scores[a] > scores[b];
+                        });
+
+                    Json::Value recommendations(Json::arrayValue);
+                    const size_t limit =
+                        maxRecommendations > 0
+                            ? std::min<size_t>(
+                                  static_cast<size_t>(maxRecommendations),
+                                  order.size())
+                            : 0;
+                    for (size_t i = 0; i < limit; ++i)
+                    {
+                        const auto &course = availableCourses[order[i]];
+                        Json::Value entry;
+                        entry["id"] = Json::Int64(course.id);
+                        entry["code"] = course.code;
+                        entry["name"] = course.name;
+                        entry["credits"] = course.credits;
+                        entry["difficulty_level"] = course.difficultyLevel;
+                        entry["reason"] =
+                            "Recommended because it matches your academic "
+                            "level and prerequisites are satisfied.";
+                        recommendations.append(std::move(entry));
+                    }
+
+                    Json::Value response;
+                    response["student_id"] = Json::Int64(studentId);
+                    response["recommendations"] = std::move(recommendations);
+                    callback(ServiceResult::ok(std::move(response)));
+                },
+                [callback](const drogon::orm::DrogonDbException &exception) {
+                    LOG_ERROR << "Failed to load course recommendations: "
+                              << exception.base().what();
+                    callback(ServiceResult::error(
+                        "Unable to load course recommendations"));
+                });
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to validate student: "
+                      << exception.base().what();
+            callback(
+                ServiceResult::error("Unable to load course recommendations"));
+        },
+        studentId);
+}
+
+void StudentService::buildSemesterPlan(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    bool hasPreferredDifficulty,
+    const std::string &preferredDifficulty,
+    bool hasMaxCredits,
+    int64_t maxCredits,
+    std::function<void(ServiceResult)> &&callback)
+{
+    database->execSqlAsync(
+        "SELECT id, max_weekly_credits FROM students WHERE id = $1",
+        [database,
+         callback,
+         studentId,
+         hasPreferredDifficulty,
+         preferredDifficulty,
+         hasMaxCredits,
+         maxCredits](const drogon::orm::Result &students) {
+            if (students.empty())
+            {
+                callback(ServiceResult::notFound("Student not found"));
+                return;
+            }
+
+            const int64_t effectiveMaxCredits =
+                hasMaxCredits
+                    ? maxCredits
+                    : students.front()["max_weekly_credits"].as<int64_t>();
+
+            fetchAvailableCourses(
+                database,
+                studentId,
+                [callback,
+                 studentId,
+                 hasPreferredDifficulty,
+                 preferredDifficulty,
+                 effectiveMaxCredits](const drogon::orm::Result &courses) {
+                    auto availableCourses = toAvailableCourses(courses);
+
+                    std::vector<size_t> order(availableCourses.size());
+                    for (size_t i = 0; i < order.size(); ++i)
+                    {
+                        order[i] = i;
+                    }
+                    std::stable_sort(
+                        order.begin(),
+                        order.end(),
+                        [&availableCourses,
+                         hasPreferredDifficulty,
+                         &preferredDifficulty](size_t a, size_t b) {
+                            const bool matchesA =
+                                hasPreferredDifficulty &&
+                                availableCourses[a].difficultyLevel ==
+                                    preferredDifficulty;
+                            const bool matchesB =
+                                hasPreferredDifficulty &&
+                                availableCourses[b].difficultyLevel ==
+                                    preferredDifficulty;
+                            if (matchesA != matchesB)
+                            {
+                                return matchesA;
+                            }
+                            return availableCourses[a].credits <
+                                   availableCourses[b].credits;
+                        });
+
+                    Json::Value coursesJson(Json::arrayValue);
+                    int64_t totalCredits = 0;
+                    int64_t estimatedWeeklyHours = 0;
+                    for (const auto index : order)
+                    {
+                        const auto &course = availableCourses[index];
+                        if (totalCredits + course.credits >
+                            effectiveMaxCredits)
+                        {
+                            continue;
+                        }
+
+                        totalCredits += course.credits;
+                        estimatedWeeklyHours += course.estimatedWeeklyHours;
+
+                        Json::Value entry;
+                        entry["id"] = Json::Int64(course.id);
+                        entry["code"] = course.code;
+                        entry["name"] = course.name;
+                        entry["credits"] = course.credits;
+                        entry["difficulty_level"] = course.difficultyLevel;
+                        entry["estimated_weekly_hours"] =
+                            course.estimatedWeeklyHours;
+                        entry["reason"] =
+                            "Selected because it is available and fits "
+                            "within the credit limit.";
+                        coursesJson.append(std::move(entry));
+                    }
+
+                    Json::Value response;
+                    response["student_id"] = Json::Int64(studentId);
+                    response["max_credits"] =
+                        Json::Int64(effectiveMaxCredits);
+                    response["total_credits"] = Json::Int64(totalCredits);
+                    response["estimated_weekly_hours"] =
+                        Json::Int64(estimatedWeeklyHours);
+                    response["courses"] = std::move(coursesJson);
+                    callback(ServiceResult::ok(std::move(response)));
+                },
+                [callback](const drogon::orm::DrogonDbException &exception) {
+                    LOG_ERROR << "Failed to build semester plan: "
+                              << exception.base().what();
+                    callback(
+                        ServiceResult::error("Unable to build semester plan"));
+                });
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to validate student: "
+                      << exception.base().what();
+            callback(ServiceResult::error("Unable to build semester plan"));
+        },
+        studentId);
+}
+
+void StudentService::analyzeRisk(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    const std::vector<int64_t> &courseIds,
+    std::function<void(ServiceResult)> &&callback)
+{
+    database->execSqlAsync(
+        "SELECT id, current_gpa, max_weekly_credits FROM students "
+        "WHERE id = $1",
+        [database, callback, studentId, courseIds](
+            const drogon::orm::Result &students) {
+            if (students.empty())
+            {
+                callback(ServiceResult::notFound("Student not found"));
+                return;
+            }
+
+            const auto currentGpa =
+                students.front()["current_gpa"].as<double>();
+            const auto maxWeeklyCredits =
+                students.front()["max_weekly_credits"].as<int>();
+
+            std::vector<int64_t> uniqueCourseIds(courseIds.begin(),
+                                                 courseIds.end());
+            std::sort(uniqueCourseIds.begin(), uniqueCourseIds.end());
+            uniqueCourseIds.erase(
+                std::unique(uniqueCourseIds.begin(), uniqueCourseIds.end()),
+                uniqueCourseIds.end());
+
+            database->execSqlAsync(
+                "SELECT id, credits, difficulty_level, "
+                "estimated_weekly_hours FROM courses",
+                [callback,
+                 studentId,
+                 currentGpa,
+                 maxWeeklyCredits,
+                 courseIds,
+                 uniqueCourseIds](const drogon::orm::Result &courses) {
+                    std::map<int64_t, AvailableCourse> coursesById;
+                    for (const auto &row : courses)
+                    {
+                        AvailableCourse course;
+                        course.id = row["id"].as<int64_t>();
+                        course.credits = row["credits"].as<int>();
+                        course.difficultyLevel =
+                            row["difficulty_level"].as<std::string>();
+                        course.estimatedWeeklyHours =
+                            row["estimated_weekly_hours"].as<int>();
+                        coursesById[course.id] = course;
+                    }
+
+                    for (const auto courseId : uniqueCourseIds)
+                    {
+                        if (coursesById.find(courseId) == coursesById.end())
+                        {
+                            callback(ServiceResult::badRequest(
+                                "One or more course_ids were not found"));
+                            return;
+                        }
+                    }
+
+                    int64_t totalCredits = 0;
+                    int64_t estimatedWeeklyHours = 0;
+                    int64_t hardCoursesCount = 0;
+                    for (const auto courseId : courseIds)
+                    {
+                        const auto &course = coursesById.at(courseId);
+                        totalCredits += course.credits;
+                        estimatedWeeklyHours += course.estimatedWeeklyHours;
+                        if (course.difficultyLevel == "hard")
+                        {
+                            ++hardCoursesCount;
+                        }
+                    }
+
+                    int riskScore = 0;
+                    Json::Value reasons(Json::arrayValue);
+                    Json::Value recommendations(Json::arrayValue);
+
+                    if (currentGpa < 60)
+                    {
+                        riskScore += 2;
+                        reasons.append("The student's GPA is below 60.");
+                        recommendations.append(
+                            "Consider reducing the course load and focusing "
+                            "on GPA recovery.");
+                    }
+                    else if (currentGpa < 70)
+                    {
+                        riskScore += 1;
+                        reasons.append("The student's GPA is below 70.");
+                        recommendations.append(
+                            "Consider selecting easier courses or reducing "
+                            "total credits.");
+                    }
+
+                    if (totalCredits > maxWeeklyCredits)
+                    {
+                        riskScore += 1;
+                        reasons.append(
+                            "The selected courses exceed the student's "
+                            "maximum weekly credits.");
+                        recommendations.append(
+                            "Reduce the plan to fit within the student's "
+                            "credit limit.");
+                    }
+
+                    if (estimatedWeeklyHours > 30)
+                    {
+                        riskScore += 1;
+                        reasons.append(
+                            "The selected courses require more than 30 "
+                            "estimated weekly hours.");
+                        recommendations.append(
+                            "Consider replacing a high-workload course with "
+                            "a lighter course.");
+                    }
+
+                    if (hardCoursesCount >= 3)
+                    {
+                        riskScore += 2;
+                        reasons.append(
+                            "The plan includes 3 or more hard courses.");
+                        recommendations.append(
+                            "Consider replacing at least one hard course "
+                            "with a medium difficulty course.");
+                    }
+                    else if (hardCoursesCount >= 2)
+                    {
+                        riskScore += 1;
+                        reasons.append("The plan includes 2 hard courses.");
+                        recommendations.append(
+                            "Consider replacing one hard course with a "
+                            "medium difficulty course.");
+                    }
+
+                    std::string riskLevel;
+                    if (riskScore >= 3)
+                    {
+                        riskLevel = "High";
+                    }
+                    else if (riskScore >= 1)
+                    {
+                        riskLevel = "Medium";
+                    }
+                    else
+                    {
+                        riskLevel = "Low";
+                    }
+
+                    if (riskLevel == "Low")
+                    {
+                        reasons.append(
+                            "The selected course load appears manageable.");
+                        recommendations.append(
+                            "Maintain steady study habits and monitor "
+                            "workload.");
+                    }
+
+                    Json::Value response;
+                    response["student_id"] = Json::Int64(studentId);
+                    response["risk_level"] = riskLevel;
+                    response["total_credits"] = Json::Int64(totalCredits);
+                    response["estimated_weekly_hours"] =
+                        Json::Int64(estimatedWeeklyHours);
+                    response["hard_courses_count"] =
+                        Json::Int64(hardCoursesCount);
+                    response["reasons"] = std::move(reasons);
+                    response["recommendations"] = std::move(recommendations);
+                    callback(ServiceResult::ok(std::move(response)));
+                },
+                [callback](const drogon::orm::DrogonDbException &exception) {
+                    LOG_ERROR << "Failed to run risk analysis: "
+                              << exception.base().what();
+                    callback(
+                        ServiceResult::error("Unable to run risk analysis"));
+                });
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to validate student: "
+                      << exception.base().what();
+            callback(ServiceResult::error("Unable to run risk analysis"));
+        },
+        studentId);
+}

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <drogon/HttpController.h>
-#include <drogon/orm/DbClient.h>
 
 class StudentsController
     : public drogon::HttpController<StudentsController>
@@ -57,12 +56,4 @@ class StudentsController
         const drogon::HttpRequestPtr &request,
         std::function<void(const drogon::HttpResponsePtr &)> &&callback,
         int64_t studentId) const;
-
-  private:
-    static void fetchAvailableCourses(
-        const drogon::orm::DbClientPtr &database,
-        int64_t studentId,
-        std::function<void(const drogon::orm::Result &)> &&onSuccess,
-        std::function<void(const drogon::orm::DrogonDbException &)>
-            &&onError);
 };
