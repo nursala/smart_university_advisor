@@ -13,6 +13,10 @@
 // The constructor throws std::runtime_error if GEMINI_API_KEY or
 // GEMINI_MODEL is missing/empty; callers must catch that and turn it into
 // a clean JSON error response.
+//
+// GEMINI_API_HOST optionally overrides the API host (default: the real
+// Gemini endpoint) -- test-only hook so concurrency/integration tests can
+// point this at a local mock server instead of the real internet.
 class GeminiClient
 {
   public:
@@ -33,4 +37,5 @@ class GeminiClient
   private:
     std::string apiKey_;
     std::string model_;
+    std::string apiHost_;
 };

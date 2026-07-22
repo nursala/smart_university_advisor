@@ -9,18 +9,20 @@
 
 namespace
 {
-std::string envOrEmpty(const char *name)
+std::string envOrDefault(const char *name, const char *defaultValue)
 {
     const char *value = std::getenv(name);
-    return value != nullptr ? value : "";
+    return value != nullptr && value[0] != '\0' ? value : defaultValue;
 }
 
-constexpr const char *kGeminiHost =
+constexpr const char *kDefaultGeminiHost =
     "https://generativelanguage.googleapis.com";
 }  // namespace
 
 GeminiClient::GeminiClient()
-    : apiKey_(envOrEmpty("GEMINI_API_KEY")), model_(envOrEmpty("GEMINI_MODEL"))
+    : apiKey_(envOrDefault("GEMINI_API_KEY", "")),
+      model_(envOrDefault("GEMINI_MODEL", "")),
+      apiHost_(envOrDefault("GEMINI_API_HOST", kDefaultGeminiHost))
 {
     if (apiKey_.empty())
     {
@@ -51,7 +53,7 @@ void GeminiClient::generateContent(
         body["tools"] = std::move(tools);
     }
 
-    auto client = drogon::HttpClient::newHttpClient(kGeminiHost);
+    auto client = drogon::HttpClient::newHttpClient(apiHost_);
     auto request = drogon::HttpRequest::newHttpJsonRequest(body);
     request->setMethod(drogon::Post);
     std::ostringstream path;

@@ -30,8 +30,10 @@ services:
       DB_USER: ${DB_USER:-advisor}
       DB_PASSWORD: ${DB_PASSWORD:-advisor_password}
       DB_NAME: ${DB_NAME:-smart_university_advisor}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-4}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      GEMINI_API_HOST: ${GEMINI_API_HOST:-https://generativelanguage.googleapis.com}
     ports:
       - "8080:8080"
     depends_on:
