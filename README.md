@@ -21,7 +21,10 @@ internal Docker network and connects to `db:5432`.
 Optional database settings can be overridden with `DB_NAME`, `DB_USER`, and
 `DB_PASSWORD`. Their defaults are `smart_university_advisor`, `advisor`, and
 `advisor_password`. The agent endpoint additionally requires `GEMINI_API_KEY`
-(and optionally `GEMINI_MODEL`, default `gemini-3.1-flash-lite`).
+(and optionally `GEMINI_MODEL`, default `gemini-3.1-flash-lite`). Auth
+endpoints sign/verify session JWTs with `JWT_SECRET` (falls back to an
+insecure dev-only default if unset -- always set a real value outside local
+development; see `.env.example`).
 
 ## Schema
 
@@ -105,6 +108,10 @@ Key constraints: `students.year_level` 1–6, `students.current_gpa` 0–100,
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| POST | `/auth/register` | Create a new user account (role always `student`), returns the user plus a session JWT |
+| POST | `/auth/login` | Verify email/password, returns the user plus a session JWT |
+| GET | `/users/me` | The authenticated user's profile (requires `Authorization: Bearer <token>`) |
+| PATCH | `/users/me` | Update the authenticated user's name and/or email |
 | GET | `/courses` | Search the course catalog, filtered by department/difficulty/credits/instructor |
 | GET | `/courses/{id}/details` | Full details for a single course (description, credits, difficulty, prerequisites) |
 | GET | `/students/{id}/profile` | A student's profile (name, email, department, year, GPA, max weekly credits) |
@@ -117,6 +124,22 @@ Key constraints: `students.year_level` 1–6, `students.current_gpa` 0–100,
 | PATCH | `/enrollments/{id}/grade` | Record or update a grade for an enrollment; marks it completed |
 | DELETE | `/enrollments/{id}` | Delete an enrollment |
 | POST | `/agent/query` | Ask the Gemini-powered advisor a natural-language question for a student |
+
+## Auth
+
+Passwords are hashed with PBKDF2-HMAC-SHA256 (`services/PasswordHasher.cc`),
+not bcrypt -- chosen to avoid a new system dependency, since OpenSSL is
+already required for Drogon's TLS support. Sessions are HS256 JWTs
+(`services/JwtService.cc`), verified by `filters/JwtAuthFilter` on any route
+that lists it (currently `/users/me`).
+
+The bcrypt-shaped hashes in `database/seed.sql` (`$2b$12$...`) predate this
+module and will **not** verify against it -- seeded demo accounts need a real
+password via `POST /auth/register` (or a reseed with a PBKDF2 hash) before
+they can log in. Self-registration only creates a `users` row; it does not
+create a matching `students` row, so a self-registered account has no
+`student_id` and can't call the student-specific or agent endpoints above
+until one is linked manually.
 
 ## Agent tools
 
