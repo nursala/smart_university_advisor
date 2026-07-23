@@ -21,6 +21,7 @@ std::vector<std::unique_ptr<Tool>> buildTools()
     tools.push_back(std::make_unique<AnalyzeAcademicRiskTool>());
     tools.push_back(std::make_unique<GetCourseDetailsTool>());
     tools.push_back(std::make_unique<SearchCoursesTool>());
+    tools.push_back(std::make_unique<EnrollInCourseTool>());
     return tools;
 }
 

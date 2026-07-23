@@ -6,6 +6,7 @@
 #include <drogon/drogon.h>
 
 #include "CourseService.h"
+#include "EnrollmentService.h"
 #include "StudentService.h"
 #include "ToolResult.h"
 #include "ValidationHelpers.h"
@@ -476,4 +477,59 @@ void SearchCoursesTool::execute(
         database, filters, [callback](ServiceResult result) {
             callback(toToolResult(result));
         });
+}
+
+Json::Value EnrollInCourseTool::declaration() const
+{
+    Json::Value properties;
+    properties["student_id"] = property("integer", "The student's numeric id");
+    properties["course_id"] = property("integer", "The course's numeric id");
+    properties["semester"] =
+        property("string", "The semester to enroll in, e.g. '2026-Fall'");
+    Json::Value parameters;
+    parameters["type"] = "object";
+    parameters["properties"] = properties;
+    Json::Value required(Json::arrayValue);
+    required.append("student_id");
+    required.append("course_id");
+    required.append("semester");
+    parameters["required"] = required;
+    return declareTool(
+        "enroll_in_course",
+        "Enroll a student in a course for a given semester, with status "
+        "'planned'. Fails if the student or course doesn't exist, or if "
+        "an enrollment already exists for that student/course/semester.",
+        parameters);
+}
+
+void EnrollInCourseTool::execute(
+    const drogon::orm::DbClientPtr &database,
+    const Json::Value &args,
+    std::function<void(Json::Value)> &&callback) const
+{
+    std::string error;
+    int64_t studentId = 0;
+    if (!tryGetStudentId(args, studentId, error))
+    {
+        callback(toolFailure(error));
+        return;
+    }
+    int64_t courseId = 0;
+    if (!tryGetCourseId(args, courseId, error))
+    {
+        callback(toolFailure(error));
+        return;
+    }
+    if (!args.isObject() || !args.isMember("semester") ||
+        !args["semester"].isString() || args["semester"].asString().empty())
+    {
+        callback(toolFailure("semester is required and must be a non-empty string"));
+        return;
+    }
+    EnrollmentService::create(
+        database,
+        studentId,
+        courseId,
+        args["semester"].asString(),
+        [callback](ServiceResult result) { callback(toToolResult(result)); });
 }

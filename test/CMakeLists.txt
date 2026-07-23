@@ -7,6 +7,7 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/Tools.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/StudentService.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/CourseService.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../services/EnrollmentService.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/ValidationHelpers.cc)
 
 target_include_directories(${PROJECT_NAME}

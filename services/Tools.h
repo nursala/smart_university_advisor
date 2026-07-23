@@ -73,3 +73,12 @@ class SearchCoursesTool : public Tool
                  const Json::Value &args,
                  std::function<void(Json::Value)> &&callback) const override;
 };
+
+class EnrollInCourseTool : public Tool
+{
+  public:
+    Json::Value declaration() const override;
+    void execute(const drogon::orm::DbClientPtr &database,
+                 const Json::Value &args,
+                 std::function<void(Json::Value)> &&callback) const override;
+};
