@@ -31,6 +31,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-advisor_password}
       DB_NAME: ${DB_NAME:-smart_university_advisor}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-4}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret-change-me}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
       GEMINI_API_HOST: ${GEMINI_API_HOST:-https://generativelanguage.googleapis.com}
