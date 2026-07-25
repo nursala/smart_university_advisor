@@ -131,20 +131,19 @@ The application exposes 17 meaningful Drogon routes:
 
 ## Auth
 
-The React application provides Dashboard, Courses, Profile, AI Advisor, and
-My Plan pages. The student workflow is register (automatic login), view the
-new `Undeclared` profile, browse nullable-safe course details, request
-recommendations or a semester preview, ask the advisor to propose an
-enrollment, explicitly confirm or cancel it, and manage the resulting
-planned enrollment in My Plan. Profile editing is limited to the name and
-email fields supported by `/users/me`; academic history, GPA, and grades are
-not editable by students.
+The React application provides Profile, Courses, AI Advisor, and My Plan
+pages. Student login and registration open Profile; staff login opens the
+public course catalog. `/dashboard` remains only as a compatibility redirect
+to the role-appropriate landing page. Profile editing is limited to the name
+and email fields supported by `/users/me`; academic history, GPA, and grades
+are not editable by students.
 
 The confirmation card submits the exact server-issued `confirmation_id`.
 Cancel is UI-only and performs no mutation. Proposals expire after five
 minutes, and an API restart invalidates them because the confirmation store
-is process-local. Chat messages survive React route navigation but are
-intentionally cleared by a full page refresh.
+is process-local. Displayed chat messages survive React route navigation but
+are intentionally cleared by a full page refresh or logout. They remain only
+in React memory, and Gemini receives only the latest submitted message.
 
 Passwords are hashed with PBKDF2-HMAC-SHA256 (`services/PasswordHasher.cc`),
 not bcrypt -- chosen to avoid a new system dependency, since OpenSSL is
@@ -152,6 +151,14 @@ already required for Drogon's TLS support. Sessions are HS256 JWTs
 (`services/JwtService.cc`), verified by `filters/JwtAuthFilter`. All student,
 enrollment, and agent routes require a JWT; course catalog routes remain
 public intentionally.
+
+Frontend authentication candidates are stored in `sessionStorage`, validated
+through `/users/me` before protected UI is rendered, and cleared on logout or
+authorization failure. Each backend process creates a random signed
+`server_boot_id`; restarting the single API process invalidates every token
+issued by its predecessor without changing `JWT_SECRET`. Multiple API replicas
+would require a shared generation identifier rather than this process-local
+scheme.
 
 Registration atomically creates a `users` row and its linked `students` row,
 then returns `{ "token": "...", "user": { ... } }`. New students start in
@@ -251,6 +258,8 @@ labeled so mocked output cannot be mistaken for live evidence.
 
 - Enrollment confirmations are process-local and disappear on API restart.
 - Chat history survives client-side navigation but not a full page refresh.
+- Browser-tab authentication uses `sessionStorage`; closing the tab ends the
+  browser session after the browser discards that storage.
 - There is no staff administration portal; staff navigation is intentionally
   limited.
 - SSE, persistent conversational memory, and multi-replica confirmation

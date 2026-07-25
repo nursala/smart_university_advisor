@@ -15,6 +15,8 @@ export function isAuthError(error: unknown): error is ApiError {
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   body?: unknown
+  token?: string | null
+  suppressUnauthorizedHandler?: boolean
 }
 
 const fallbackErrorMessage = 'Something went wrong. Please try again.'
@@ -39,8 +41,9 @@ export async function apiRequest<T>(
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json'
   }
-  if (authToken) {
-    headers.Authorization = `Bearer ${authToken}`
+  const requestToken = options.token === undefined ? authToken : options.token
+  if (requestToken) {
+    headers.Authorization = `Bearer ${requestToken}`
   }
 
   let response: Response
@@ -61,7 +64,8 @@ export async function apiRequest<T>(
       typeof (data as { error?: unknown }).error === 'string'
         ? (data as { error: string }).error
         : fallbackErrorMessage
-    if (response.status === 401) unauthorizedHandler?.()
+    if ((response.status === 401 || response.status === 403) &&
+        !options.suppressUnauthorizedHandler) unauthorizedHandler?.()
     throw new ApiError(message, response.status)
   }
 

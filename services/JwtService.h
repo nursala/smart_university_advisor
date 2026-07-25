@@ -22,6 +22,9 @@ class JwtService
     // clean JSON error response, mirroring how GeminiClient's constructor
     // is used in AgentController.
     JwtService();
+    // Test-only constructor for simulating distinct backend process boots
+    // without mutating production-global state.
+    explicit JwtService(std::string bootIdOverride);
 
     // Issues a signed token for `userId`/`role`, valid for `ttlSeconds`
     // (default 24h) from now.
@@ -33,6 +36,17 @@ class JwtService
     // failure (bad signature, malformed token, expired) -- never throws.
     std::optional<Claims> verify(const std::string &token) const;
 
+    // Produces the pre-boot-claim token shape for rejection regression tests.
+    std::string issueWithoutBootClaimForTesting(
+        int64_t userId,
+        const std::string &role,
+        int64_t ttlSeconds = 24 * 60 * 60) const;
+
   private:
+    std::string issueInternal(int64_t userId,
+                              const std::string &role,
+                              int64_t ttlSeconds,
+                              bool includeBootId) const;
     std::string secret_;
+    std::string bootId_;
 };

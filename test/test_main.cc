@@ -267,6 +267,28 @@ DROGON_TEST(JwtServiceRejectsExpiredToken)
     CHECK(claims.has_value() == false);
 }
 
+DROGON_TEST(JwtServiceRejectsTokenFromPreviousBoot)
+{
+    JwtService previousBoot("previous-test-boot");
+    JwtService currentBoot("current-test-boot");
+    const auto oldToken = previousBoot.issue(19, "advisor");
+    CHECK(previousBoot.verify(oldToken).has_value());
+    CHECK(currentBoot.verify(oldToken).has_value() == false);
+    const auto newToken = currentBoot.issue(19, "advisor");
+    const auto claims = currentBoot.verify(newToken);
+    REQUIRE(claims.has_value());
+    CHECK(claims->userId == 19);
+    CHECK(claims->role == "advisor");
+}
+
+DROGON_TEST(JwtServiceRejectsTokenWithoutBootClaim)
+{
+    JwtService jwtService("boot-claim-test");
+    const auto legacy =
+        jwtService.issueWithoutBootClaimForTesting(5, "student");
+    CHECK(jwtService.verify(legacy).has_value() == false);
+}
+
 DROGON_TEST(JwtServiceConstructorThrowsWithoutSecret)
 {
     ScopedEnvVar scopedSecret("JWT_SECRET");
