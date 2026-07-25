@@ -7,13 +7,14 @@ class EnrollmentsController
 {
   public:
     METHOD_LIST_BEGIN
-    ADD_METHOD_TO(EnrollmentsController::create, "/enrollments", drogon::Post);
+    ADD_METHOD_TO(EnrollmentsController::create, "/enrollments", drogon::Post,
+                  "JwtAuthFilter");
     ADD_METHOD_TO(EnrollmentsController::recordGrade,
                   "/enrollments/{1}/grade",
-                  drogon::Patch);
+                  drogon::Patch, "JwtAuthFilter");
     ADD_METHOD_TO(EnrollmentsController::remove,
                   "/enrollments/{1}",
-                  drogon::Delete);
+                  drogon::Delete, "JwtAuthFilter");
     METHOD_LIST_END
 
     void create(

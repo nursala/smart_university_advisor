@@ -13,6 +13,15 @@ Json::Value toUserJson(const drogon::orm::Row &row)
     user["name"] = row["name"].as<std::string>();
     user["email"] = row["email"].as<std::string>();
     user["role"] = row["role"].as<std::string>();
+    if (!row["student_id"].isNull())
+    {
+        user["student_id"] =
+            Json::Int64(row["student_id"].as<int64_t>());
+    }
+    else
+    {
+        user["student_id"] = Json::nullValue;
+    }
     return user;
 }
 }  // namespace
@@ -37,10 +46,23 @@ void UserService::registerUser(
     }
 
     database->execSqlAsync(
-        "INSERT INTO users (name, email, password_hash, role) "
-        "VALUES ($1, $2, $3, 'student') "
-        "ON CONFLICT (email) DO NOTHING "
-        "RETURNING id, name, email, role",
+        "WITH new_user AS ("
+        " INSERT INTO users (name, email, password_hash, role)"
+        " VALUES ($1, $2, $3, 'student')"
+        " ON CONFLICT (email) DO NOTHING"
+        " RETURNING id, name, email, role"
+        "), new_student AS ("
+        " INSERT INTO students"
+        " (user_id, student_number, department, year_level, current_gpa,"
+        "  max_weekly_credits)"
+        " SELECT id,"
+        "   'S' || to_char(current_date, 'YYYY') || lpad(id::text, 10, '0'),"
+        "   'Undeclared', 1, NULL, 20"
+        " FROM new_user"
+        " RETURNING id, user_id"
+        ")"
+        " SELECT u.id, u.name, u.email, u.role, s.id AS student_id"
+        " FROM new_user u JOIN new_student s ON s.user_id = u.id",
         [callback](const drogon::orm::Result &inserted) {
             if (inserted.empty())
             {
@@ -67,8 +89,9 @@ void UserService::login(
     std::function<void(ServiceResult)> &&callback)
 {
     database->execSqlAsync(
-        "SELECT id, name, email, role, password_hash FROM users "
-        "WHERE email = $1",
+        "SELECT u.id, u.name, u.email, u.role, u.password_hash,"
+        " s.id AS student_id FROM users u "
+        "LEFT JOIN students s ON s.user_id = u.id WHERE u.email = $1",
         [callback, password](const drogon::orm::Result &result) {
             if (result.empty())
             {
@@ -100,7 +123,9 @@ void UserService::getProfile(
     std::function<void(ServiceResult)> &&callback)
 {
     database->execSqlAsync(
-        "SELECT id, name, email, role FROM users WHERE id = $1",
+        "SELECT u.id, u.name, u.email, u.role, s.id AS student_id "
+        "FROM users u LEFT JOIN students s ON s.user_id = u.id "
+        "WHERE u.id = $1",
         [callback](const drogon::orm::Result &result) {
             if (result.empty())
             {
@@ -154,7 +179,9 @@ void UserService::updateProfile(
                 database->execSqlAsync(
                     "UPDATE users SET name = $2, email = $3 "
                     "WHERE id = $1 "
-                    "RETURNING id, name, email, role",
+                    "RETURNING id, name, email, role, "
+                    "(SELECT id FROM students WHERE user_id = users.id) "
+                    "AS student_id",
                     [callback](const drogon::orm::Result &updated) {
                         callback(
                             ServiceResult::ok(toUserJson(updated.front())));

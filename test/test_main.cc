@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "../services/JwtService.h"
+#include "../services/AuthorizationService.h"
 #include "../services/PasswordHasher.h"
 #include "../services/ToolRegistry.h"
 
@@ -75,6 +76,46 @@ DROGON_TEST(PasswordHasherRejectsWrongPasswordAndGarbageHash)
     CHECK(PasswordHasher::verify(
               "anything", "$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K") ==
           false);
+}
+
+DROGON_TEST(SeededDemoPasswordHashVerifies)
+{
+    const std::string hash =
+        "pbkdf2_sha256$210000$"
+        "c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$"
+        "UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=";
+    CHECK(PasswordHasher::verify("DemoStudent2026!", hash) == true);
+}
+
+DROGON_TEST(StudentAuthorizationRejectsAnotherStudent)
+{
+    AuthenticatedIdentity student{10, "student", 41};
+    int64_t authorized = 0;
+    std::string error;
+    CHECK(AuthorizationService::authorizeStudent(
+              student, 42, authorized, error) == false);
+    CHECK(AuthorizationService::canRecordGrades(student) == false);
+}
+
+DROGON_TEST(StaffAuthorizationAllowsCrossStudentAndGrades)
+{
+    AuthenticatedIdentity advisor{10, "advisor", std::nullopt};
+    int64_t authorized = 0;
+    std::string error;
+    CHECK(AuthorizationService::authorizeStudent(
+              advisor, 42, authorized, error) == true);
+    CHECK(authorized == 42);
+    CHECK(AuthorizationService::canRecordGrades(advisor) == true);
+}
+
+DROGON_TEST(AgentToolArgumentsCannotSwitchStudentIdentity)
+{
+    Json::Value modelArgs;
+    modelArgs["student_id"] = Json::Int64(999);
+    modelArgs["course_id"] = Json::Int64(3);
+    const auto scoped = ToolRegistry::scopeArguments(modelArgs, 41);
+    CHECK(scoped["student_id"].asInt64() == 41);
+    CHECK(scoped["course_id"].asInt64() == 3);
 }
 
 namespace

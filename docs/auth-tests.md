@@ -36,11 +36,11 @@ transcript of each case):
 
 | Case | Result |
 | --- | --- |
-| `POST /auth/register`, new email | `201`, body has `id`/`name`/`email`/`role`/`token` |
+| `POST /auth/register`, new email | `201`, body has top-level `token` and nested `user` with `student_id` |
 | `POST /auth/register`, same email again | `400`, `"An account with this email already exists"` |
 | `POST /auth/register`, missing password | `400` |
 | `POST /auth/register`, 7-character password | `400` |
-| `POST /auth/login`, correct password | `200` + `token` |
+| `POST /auth/login`, correct password | `200`, same `{ token, user }` contract with linked `student_id` |
 | `POST /auth/login`, wrong password | `400`, `"Invalid email or password"` |
 | `POST /auth/login`, unregistered email | `400`, **same** `"Invalid email or password"` message (no user-enumeration leak) |
 | `GET /users/me`, no `Authorization` header | `401` |

@@ -104,7 +104,10 @@ void StudentService::getProfile(
                 row["student_number"].as<std::string>();
             student["department"] = row["department"].as<std::string>();
             student["year_level"] = row["year_level"].as<int>();
-            student["current_gpa"] = row["current_gpa"].as<double>();
+            student["current_gpa"] = row["current_gpa"].isNull()
+                                         ? Json::Value(Json::nullValue)
+                                         : Json::Value(
+                                               row["current_gpa"].as<double>());
             student["max_weekly_credits"] =
                 row["max_weekly_credits"].as<int>();
             student["name"] = row["name"].as<std::string>();
@@ -149,7 +152,10 @@ void StudentService::getAcademicSummary(
 
             const auto &row = result.front();
             Json::Value summary;
-            summary["current_gpa"] = row["current_gpa"].as<double>();
+            summary["current_gpa"] = row["current_gpa"].isNull()
+                                         ? Json::Value(Json::nullValue)
+                                         : Json::Value(
+                                               row["current_gpa"].as<double>());
             summary["completed_courses_count"] = Json::Int64(
                 row["completed_courses_count"].as<int64_t>());
             summary["active_courses_count"] =

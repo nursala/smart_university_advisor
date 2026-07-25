@@ -1,18 +1,18 @@
 INSERT INTO users (name, email, password_hash, role)
 VALUES
-('Admin User', 'admin@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'admin'),
-('Academic Advisor', 'advisor@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'advisor'),
-('Senior Advisor', 'senior.advisor@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'advisor'),
-('Adam Cohen', 'adam@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Sara Levi', 'sara@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Noa Mizrahi', 'noa@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Daniel Peretz', 'daniel@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Maya Rosen', 'maya.student@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Omer Hadad', 'omer@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Lian Bar', 'lian@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Yaron Shalev', 'yaron@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Tamar Azulay', 'tamar@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student'),
-('Eitan Mor', 'eitan@example.com', '$2b$12$GxQqY18zWbYkNqO8qH7u/.bqLmVoeI6gqgSAq2m6R5j0I6byQpJ8K', 'student');
+('Admin User', 'admin@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0YWZm$mb8+kFC1OigcdkcGDwc7lPqQbOOGNqXJNMkHdQrmeyI=', 'admin'),
+('Academic Advisor', 'advisor@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0YWZm$mb8+kFC1OigcdkcGDwc7lPqQbOOGNqXJNMkHdQrmeyI=', 'advisor'),
+('Senior Advisor', 'senior.advisor@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0YWZm$mb8+kFC1OigcdkcGDwc7lPqQbOOGNqXJNMkHdQrmeyI=', 'advisor'),
+('Adam Cohen', 'adam@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Sara Levi', 'sara@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Noa Mizrahi', 'noa@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Daniel Peretz', 'daniel@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Maya Rosen', 'maya.student@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Omer Hadad', 'omer@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Lian Bar', 'lian@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Yaron Shalev', 'yaron@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Tamar Azulay', 'tamar@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student'),
+('Eitan Mor', 'eitan@example.com', 'pbkdf2_sha256$210000$c21hcnQtdW5pdmVyc2l0eS1kZW1vLXN0dWRlbnQ=$UOUmwPSL3LAoo4lrAwfWeeMfGyv/yhQxXRReE/QXSOg=', 'student');
 
 INSERT INTO instructors (name, email, department, rating)
 VALUES

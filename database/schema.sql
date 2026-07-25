@@ -35,7 +35,8 @@ CREATE TABLE students (
     student_number VARCHAR(50) NOT NULL UNIQUE,
     department VARCHAR(120) NOT NULL,
     year_level INT NOT NULL,
-    current_gpa NUMERIC(5,2) DEFAULT 0,
+    -- NULL means the student has no official grades yet.
+    current_gpa NUMERIC(5,2) DEFAULT NULL,
     max_weekly_credits INT DEFAULT 20,
 
     CONSTRAINT fk_students_user

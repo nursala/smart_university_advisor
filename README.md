@@ -108,8 +108,8 @@ Key constraints: `students.year_level` 1–6, `students.current_gpa` 0–100,
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/auth/register` | Create a new user account (role always `student`), returns the user plus a session JWT |
-| POST | `/auth/login` | Verify email/password, returns the user plus a session JWT |
+| POST | `/auth/register` | Atomically create a student account and linked record; returns `{ token, user }` |
+| POST | `/auth/login` | Verify email/password; returns `{ token, user }` |
 | GET | `/users/me` | The authenticated user's profile (requires `Authorization: Bearer <token>`) |
 | PATCH | `/users/me` | Update the authenticated user's name and/or email |
 | GET | `/courses` | Search the course catalog, filtered by department/difficulty/credits/instructor |
@@ -130,16 +130,27 @@ Key constraints: `students.year_level` 1–6, `students.current_gpa` 0–100,
 Passwords are hashed with PBKDF2-HMAC-SHA256 (`services/PasswordHasher.cc`),
 not bcrypt -- chosen to avoid a new system dependency, since OpenSSL is
 already required for Drogon's TLS support. Sessions are HS256 JWTs
-(`services/JwtService.cc`), verified by `filters/JwtAuthFilter` on any route
-that lists it (currently `/users/me`).
+(`services/JwtService.cc`), verified by `filters/JwtAuthFilter`. All student,
+enrollment, and agent routes require a JWT; course catalog routes remain
+public intentionally.
 
-The bcrypt-shaped hashes in `database/seed.sql` (`$2b$12$...`) predate this
-module and will **not** verify against it -- seeded demo accounts need a real
-password via `POST /auth/register` (or a reseed with a PBKDF2 hash) before
-they can log in. Self-registration only creates a `users` row; it does not
-create a matching `students` row, so a self-registered account has no
-`student_id` and can't call the student-specific or agent endpoints above
-until one is linked manually.
+Registration atomically creates a `users` row and its linked `students` row,
+then returns `{ "token": "...", "user": { ... } }`. New students start in
+department `Undeclared`, year 1, with a 20-credit limit and a NULL GPA
+(meaning no official grades yet).
+
+Development-only seeded credentials (never use outside local development):
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Student with academic history | `adam@example.com` | `DemoStudent2026!` |
+| Administrator | `admin@example.com` | `DemoStaff2026!` |
+
+Students can read/analyze only their linked record, create and delete only
+their own planned enrollments, and cannot record grades. Advisors and
+administrators may work across students, manage enrollments, and record
+official grades. Agent tool arguments are server-scoped, so Gemini cannot
+replace the authorized student identity.
 
 ## Agent tools
 

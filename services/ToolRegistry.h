@@ -30,4 +30,16 @@ class ToolRegistry
         const std::string &toolName,
         const Json::Value &args,
         std::function<void(Json::Value)> &&callback);
+
+    // Server-authorized variant used by the agent. Model-supplied
+    // student_id is overwritten before any student-scoped tool executes.
+    static void executeAuthorized(
+        const drogon::orm::DbClientPtr &database,
+        const std::string &toolName,
+        const Json::Value &args,
+        int64_t authorizedStudentId,
+        std::function<void(Json::Value)> &&callback);
+
+    static Json::Value scopeArguments(const Json::Value &args,
+                                      int64_t authorizedStudentId);
 };

@@ -26,7 +26,7 @@ bool isNonEmptyString(const Json::Value &value)
 // Attaches a freshly issued JWT to a successful register/login
 // ServiceResult and turns the combined payload into an HTTP response.
 // Both endpoints share this exact response shape:
-// { id, name, email, role, "token": "..." }.
+// { "token": "...", "user": { id, name, email, role, student_id } }.
 drogon::HttpResponsePtr withToken(const ServiceResult &result)
 {
     if (result.status != ServiceResult::Status::Ok)
@@ -40,8 +40,9 @@ drogon::HttpResponsePtr withToken(const ServiceResult &result)
         const auto userId = result.data["id"].asInt64();
         const auto role = result.data["role"].asString();
 
-        Json::Value body = result.data;
+        Json::Value body;
         body["token"] = jwtService.issue(userId, role);
+        body["user"] = result.data;
         return drogon::HttpResponse::newHttpJsonResponse(body);
     }
     catch (const std::exception &exception)

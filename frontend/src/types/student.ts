@@ -8,7 +8,7 @@ export type StudentProfile = {
   student_number: string
   department: string
   year_level: number
-  current_gpa: number
+  current_gpa: number | null
   max_weekly_credits: number
 }
 
@@ -18,7 +18,7 @@ export type AcademicSummary = {
   active_courses_count: number
   failed_courses_count: number
   completed_credits: number
-  current_gpa: number
+  current_gpa: number | null
 }
 
 export type AvailableCourse = {

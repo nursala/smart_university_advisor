@@ -101,7 +101,14 @@ export default function ProfilePage() {
           </section>
 
           <section className="stat-grid" aria-label="Academic summary">
-            <StatCard label="Current GPA" value={state.summary.current_gpa.toFixed(2)} />
+            <StatCard
+              label="Current GPA"
+              value={
+                state.summary.current_gpa === null
+                  ? 'No grades yet'
+                  : state.summary.current_gpa.toFixed(2)
+              }
+            />
             <StatCard label="Completed credits" value={state.summary.completed_credits} />
             <StatCard label="Completed courses" value={state.summary.completed_courses_count} />
             <StatCard label="Active courses" value={state.summary.active_courses_count} />

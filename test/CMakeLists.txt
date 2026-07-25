@@ -12,6 +12,8 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/Base64.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/PasswordHasher.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/JwtService.cc)
+target_sources(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../services/AuthorizationService.cc)
 
 target_include_directories(${PROJECT_NAME}
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)

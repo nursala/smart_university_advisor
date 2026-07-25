@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { register as registerRequest } from '../services/authApi'
 import { ApiError } from '../services/api'
+import { useAuth } from '../auth/AuthContext'
 
 type FieldErrors = Partial<
   Record<'name' | 'email' | 'password' | 'confirmPassword', string>
@@ -10,6 +11,7 @@ type FieldErrors = Partial<
 
 export default function RegisterPage() {
   const navigate = useNavigate()
+  const { login } = useAuth()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -44,9 +46,10 @@ export default function RegisterPage() {
 
     setLoading(true)
     try {
-      await registerRequest(name.trim(), email.trim(), password)
-      setMessage('Account created successfully. Please sign in.')
-      setTimeout(() => navigate('/login'), 900)
+      const { token, user } =
+        await registerRequest(name.trim(), email.trim(), password)
+      login(token, user)
+      navigate('/dashboard', { replace: true })
     } catch (err) {
       setMessage(
         err instanceof ApiError

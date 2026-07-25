@@ -4,6 +4,7 @@
 
 #include <drogon/drogon.h>
 
+#include "../services/AuthorizationService.h"
 #include "../services/EnrollmentService.h"
 #include "../services/ServiceResultHttp.h"
 #include "../services/ValidationHelpers.h"
@@ -34,26 +35,40 @@ void EnrollmentsController::create(
     const auto &body = request->getJsonObject();
     int64_t studentId = 0;
     int64_t courseId = 0;
-    if (!body || !body->isObject() || !body->isMember("student_id") ||
+    if (!body || !body->isObject() ||
         !body->isMember("course_id") || !body->isMember("semester") ||
-        !isPositiveInteger((*body)["student_id"], studentId) ||
         !isPositiveInteger((*body)["course_id"], courseId) ||
         !(*body)["semester"].isString() ||
         (*body)["semester"].asString().empty())
     {
         callback(errorResponse(
-            "student_id, course_id, and a non-empty semester are required",
+            "course_id and a non-empty semester are required",
             drogon::k400BadRequest));
         return;
     }
 
-    const auto semester = (*body)["semester"].asString();
+    if (body->isMember("student_id") &&
+        !isPositiveInteger((*body)["student_id"], studentId))
+    {
+        callback(errorResponse("student_id must be a positive integer",
+                               drogon::k400BadRequest));
+        return;
+    }
+    const auto identity = AuthorizationService::identity(request);
+    int64_t authorizedStudentId = 0;
+    std::string authorizationError;
+    if (!AuthorizationService::authorizeStudent(
+            identity, studentId, authorizedStudentId, authorizationError))
+    {
+        callback(errorResponse(authorizationError, drogon::k403Forbidden));
+        return;
+    }
 
     EnrollmentService::create(
         drogon::app().getDbClient(),
-        studentId,
+        authorizedStudentId,
         courseId,
-        semester,
+        (*body)["semester"].asString(),
         [callback](ServiceResult result) { callback(toHttpResponse(result)); });
 }
 
@@ -62,6 +77,13 @@ void EnrollmentsController::recordGrade(
     std::function<void(const drogon::HttpResponsePtr &)> &&callback,
     int64_t enrollmentId) const
 {
+    if (!AuthorizationService::canRecordGrades(
+            AuthorizationService::identity(request)))
+    {
+        callback(errorResponse("Students may not record official grades",
+                               drogon::k403Forbidden));
+        return;
+    }
     const auto &body = request->getJsonObject();
     if (!body || !body->isObject() || !body->isMember("grade") ||
         !(*body)["grade"].isNumeric())
@@ -87,12 +109,53 @@ void EnrollmentsController::recordGrade(
 }
 
 void EnrollmentsController::remove(
-    const drogon::HttpRequestPtr &,
+    const drogon::HttpRequestPtr &request,
     std::function<void(const drogon::HttpResponsePtr &)> &&callback,
     int64_t enrollmentId) const
 {
-    EnrollmentService::remove(
-        drogon::app().getDbClient(),
-        enrollmentId,
-        [callback](ServiceResult result) { callback(toHttpResponse(result)); });
+    const auto identity = AuthorizationService::identity(request);
+    auto database = drogon::app().getDbClient();
+    database->execSqlAsync(
+        "SELECT student_id, status FROM enrollments WHERE id = $1",
+        [database, callback, identity, enrollmentId](
+            const drogon::orm::Result &result) {
+            if (result.empty())
+            {
+                callback(toHttpResponse(
+                    ServiceResult::notFound("Enrollment not found")));
+                return;
+            }
+            int64_t authorizedStudentId = 0;
+            std::string error;
+            if (!AuthorizationService::authorizeStudent(
+                    identity,
+                    result.front()["student_id"].as<int64_t>(),
+                    authorizedStudentId,
+                    error))
+            {
+                callback(errorResponse(error, drogon::k403Forbidden));
+                return;
+            }
+            if (!AuthorizationService::isStaff(identity) &&
+                result.front()["status"].as<std::string>() != "planned")
+            {
+                callback(errorResponse(
+                    "Students may delete only planned enrollments",
+                    drogon::k403Forbidden));
+                return;
+            }
+            EnrollmentService::remove(
+                database,
+                enrollmentId,
+                [callback](ServiceResult serviceResult) {
+                    callback(toHttpResponse(serviceResult));
+                });
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to authorize enrollment deletion: "
+                      << exception.base().what();
+            callback(errorResponse("Unable to authorize enrollment",
+                                   drogon::k500InternalServerError));
+        },
+        enrollmentId);
 }

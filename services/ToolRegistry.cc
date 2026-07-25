@@ -87,3 +87,25 @@ void ToolRegistry::execute(
                              exception.what()));
     }
 }
+
+void ToolRegistry::executeAuthorized(
+    const drogon::orm::DbClientPtr &database,
+    const std::string &toolName,
+    const Json::Value &args,
+    int64_t authorizedStudentId,
+    std::function<void(Json::Value)> &&callback)
+{
+    auto authorizedArgs = scopeArguments(args, authorizedStudentId);
+    execute(database, toolName, authorizedArgs, std::move(callback));
+}
+
+Json::Value ToolRegistry::scopeArguments(const Json::Value &args,
+                                         int64_t authorizedStudentId)
+{
+    Json::Value authorizedArgs =
+        args.isObject() ? args : Json::Value(Json::objectValue);
+    // Harmless for catalog-only tools; decisive for every student-scoped
+    // tool, including enroll_in_course.
+    authorizedArgs["student_id"] = Json::Int64(authorizedStudentId);
+    return authorizedArgs;
+}

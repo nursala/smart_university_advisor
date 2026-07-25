@@ -4,6 +4,7 @@
 
 #include <drogon/drogon.h>
 
+#include "../services/AuthorizationService.h"
 #include "../services/ServiceResultHttp.h"
 #include "../services/StudentService.h"
 #include "../services/ValidationHelpers.h"
@@ -21,11 +22,33 @@ drogon::HttpResponsePtr errorResponse(const std::string &message,
 }
 }  // namespace
 
+namespace
+{
+bool authorize(const drogon::HttpRequestPtr &request,
+               int64_t requestedStudentId,
+               int64_t &studentId,
+               const std::function<void(const drogon::HttpResponsePtr &)> &callback)
+{
+    std::string error;
+    if (!AuthorizationService::authorizeStudent(
+            AuthorizationService::identity(request),
+            requestedStudentId,
+            studentId,
+            error))
+    {
+        callback(errorResponse(error, drogon::k403Forbidden));
+        return false;
+    }
+    return true;
+}
+}
+
 void StudentsController::profile(
-    const drogon::HttpRequestPtr &,
+    const drogon::HttpRequestPtr &request,
     std::function<void(const drogon::HttpResponsePtr &)> &&callback,
     int64_t studentId) const
 {
+    if (!authorize(request, studentId, studentId, callback)) return;
     StudentService::getProfile(
         drogon::app().getDbClient(), studentId, [callback](ServiceResult result) {
             callback(toHttpResponse(result));
@@ -33,10 +56,11 @@ void StudentsController::profile(
 }
 
 void StudentsController::academicSummary(
-    const drogon::HttpRequestPtr &,
+    const drogon::HttpRequestPtr &request,
     std::function<void(const drogon::HttpResponsePtr &)> &&callback,
     int64_t studentId) const
 {
+    if (!authorize(request, studentId, studentId, callback)) return;
     StudentService::getAcademicSummary(
         drogon::app().getDbClient(), studentId, [callback](ServiceResult result) {
             callback(toHttpResponse(result));
@@ -44,10 +68,11 @@ void StudentsController::academicSummary(
 }
 
 void StudentsController::availableCourses(
-    const drogon::HttpRequestPtr &,
+    const drogon::HttpRequestPtr &request,
     std::function<void(const drogon::HttpResponsePtr &)> &&callback,
     int64_t studentId) const
 {
+    if (!authorize(request, studentId, studentId, callback)) return;
     StudentService::getAvailableCourses(
         drogon::app().getDbClient(), studentId, [callback](ServiceResult result) {
             callback(toHttpResponse(result));
@@ -59,6 +84,7 @@ void StudentsController::courseRecommendations(
     std::function<void(const drogon::HttpResponsePtr &)> &&callback,
     int64_t studentId) const
 {
+    if (!authorize(request, studentId, studentId, callback)) return;
     const auto &body = request->getJsonObject();
 
     std::optional<std::string> preferredDifficulty;
@@ -101,6 +127,7 @@ void StudentsController::semesterPlan(
     std::function<void(const drogon::HttpResponsePtr &)> &&callback,
     int64_t studentId) const
 {
+    if (!authorize(request, studentId, studentId, callback)) return;
     const auto &body = request->getJsonObject();
 
     std::optional<std::string> preferredDifficulty;
@@ -145,6 +172,7 @@ void StudentsController::riskAnalysis(
     std::function<void(const drogon::HttpResponsePtr &)> &&callback,
     int64_t studentId) const
 {
+    if (!authorize(request, studentId, studentId, callback)) return;
     auto database = drogon::app().getDbClient();
     database->execSqlAsync(
         "SELECT id FROM students WHERE id = $1",

@@ -60,5 +60,35 @@ void JwtAuthFilter::doFilter(const drogon::HttpRequestPtr &request,
 
     request->attributes()->insert("user_id", claims->userId);
     request->attributes()->insert("user_role", claims->role);
-    chainCallback();
+    if (claims->role != "student")
+    {
+        chainCallback();
+        return;
+    }
+
+    drogon::app().getDbClient()->execSqlAsync(
+        "SELECT id FROM students WHERE user_id = $1",
+        [request, chainCallback, filterCallback](
+            const drogon::orm::Result &result) mutable {
+            if (result.empty())
+            {
+                filterCallback(unauthorized(
+                    "Student account is not linked to a student record"));
+                return;
+            }
+            request->attributes()->insert(
+                "student_id", result.front()["id"].as<int64_t>());
+            chainCallback();
+        },
+        [filterCallback](
+            const drogon::orm::DrogonDbException &exception) mutable {
+            LOG_ERROR << "Failed to resolve authenticated student: "
+                      << exception.base().what();
+            Json::Value error;
+            error["error"] = "Authentication is not available";
+            auto response = drogon::HttpResponse::newHttpJsonResponse(error);
+            response->setStatusCode(drogon::k500InternalServerError);
+            filterCallback(response);
+        },
+        claims->userId);
 }

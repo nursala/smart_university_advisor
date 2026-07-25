@@ -101,7 +101,14 @@ export default function DashboardPage() {
       {overview.status === 'loaded' && (
         <>
           <section className="stat-grid" aria-label="Academic overview">
-            <StatCard label="Current GPA" value={overview.summary.current_gpa.toFixed(2)} />
+            <StatCard
+              label="Current GPA"
+              value={
+                overview.summary.current_gpa === null
+                  ? 'No grades yet'
+                  : overview.summary.current_gpa.toFixed(2)
+              }
+            />
             <StatCard label="Completed credits" value={overview.summary.completed_credits} />
             <StatCard label="Completed courses" value={overview.summary.completed_courses_count} />
             <StatCard label="Active courses" value={overview.summary.active_courses_count} />

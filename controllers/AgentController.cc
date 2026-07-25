@@ -7,6 +7,7 @@
 #include <drogon/drogon.h>
 
 #include "../services/GeminiClient.h"
+#include "../services/AuthorizationService.h"
 #include "../services/ToolRegistry.h"
 #include "../services/ValidationHelpers.h"
 
@@ -79,10 +80,11 @@ void executeFunctionCalls(
 
     state->toolsUsed.append(name);
 
-    ToolRegistry::execute(
+    ToolRegistry::executeAuthorized(
         state->database,
         name,
         args,
+        state->studentId,
         [state, functionCalls, index, responseParts, name](
             Json::Value toolResult) {
             Json::Value functionResponse;
@@ -182,18 +184,34 @@ void AgentController::query(
     std::function<void(const drogon::HttpResponsePtr &)> &&callback) const
 {
     const auto &body = request->getJsonObject();
-    int64_t studentId = 0;
+    int64_t requestedStudentId = 0;
     std::string parseError;
-    if (!body || !body->isObject() || !body->isMember("student_id") ||
-        !ValidationHelpers::tryGetInt64(
-            (*body)["student_id"], studentId, parseError) ||
-        studentId <= 0 || !body->isMember("message") ||
+    if (!body || !body->isObject() || !body->isMember("message") ||
         !(*body)["message"].isString() || (*body)["message"].asString().empty())
     {
         callback(errorResponse(
-            "student_id (a positive integer) and a non-empty message are "
-            "required",
+            "a non-empty message is required",
             drogon::k400BadRequest));
+        return;
+    }
+
+    if (body->isMember("student_id") &&
+        !ValidationHelpers::tryGetInt64(
+            (*body)["student_id"], requestedStudentId, parseError))
+    {
+        callback(errorResponse("student_id must be an integer",
+                               drogon::k400BadRequest));
+        return;
+    }
+    int64_t studentId = 0;
+    std::string authorizationError;
+    if (!AuthorizationService::authorizeStudent(
+            AuthorizationService::identity(request),
+            requestedStudentId,
+            studentId,
+            authorizationError))
+    {
+        callback(errorResponse(authorizationError, drogon::k403Forbidden));
         return;
     }
 
