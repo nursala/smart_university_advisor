@@ -11,6 +11,11 @@
 class EnrollmentService
 {
   public:
+    static void listPlanned(
+        const drogon::orm::DbClientPtr &database,
+        int64_t studentId,
+        std::function<void(ServiceResult)> &&callback);
+
     static void create(
         const drogon::orm::DbClientPtr &database,
         int64_t studentId,

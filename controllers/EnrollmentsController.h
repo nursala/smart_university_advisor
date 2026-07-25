@@ -7,6 +7,8 @@ class EnrollmentsController
 {
   public:
     METHOD_LIST_BEGIN
+    ADD_METHOD_TO(EnrollmentsController::listPlanned,
+                  "/enrollments/planned", drogon::Get, "JwtAuthFilter");
     ADD_METHOD_TO(EnrollmentsController::create, "/enrollments", drogon::Post,
                   "JwtAuthFilter");
     ADD_METHOD_TO(EnrollmentsController::recordGrade,
@@ -16,6 +18,10 @@ class EnrollmentsController
                   "/enrollments/{1}",
                   drogon::Delete, "JwtAuthFilter");
     METHOD_LIST_END
+
+    void listPlanned(
+        const drogon::HttpRequestPtr &request,
+        std::function<void(const drogon::HttpResponsePtr &)> &&callback) const;
 
     void create(
         const drogon::HttpRequestPtr &request,

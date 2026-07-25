@@ -29,7 +29,7 @@ export default function LoginPage() {
     try {
       const { token, user } = await loginRequest(email, password)
       login(token, user)
-      navigate('/dashboard', { replace: true })
+      navigate(user.role === 'student' ? '/dashboard' : '/courses', { replace: true })
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : 'Unable to sign in. Please try again.',

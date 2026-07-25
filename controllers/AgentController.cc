@@ -9,6 +9,7 @@
 #include "../services/GeminiClient.h"
 #include "../services/AuthorizationService.h"
 #include "../services/EnrollmentConfirmationService.h"
+#include "../services/EnrollmentService.h"
 #include "../services/ToolRegistry.h"
 #include "../services/ValidationHelpers.h"
 
@@ -92,6 +93,7 @@ void executeFunctionCalls(
         [state, functionCalls, index, responseParts, name](
             Json::Value toolResult) {
             if (toolResult.isMember("data") &&
+                toolResult["data"].isObject() &&
                 toolResult["data"].isMember("confirmation_id"))
             {
                 state->proposedAction = toolResult["data"];
@@ -237,8 +239,9 @@ void AgentController::query(
             return;
         }
         std::string confirmationError;
-        auto confirmedArgs = EnrollmentConfirmationService::consume(
-            (*body)["confirmation_id"].asString(),
+        const auto confirmationId = (*body)["confirmation_id"].asString();
+        auto confirmedArgs = EnrollmentConfirmationService::acquire(
+            confirmationId,
             identity.userId,
             studentId,
             confirmationError);
@@ -247,14 +250,33 @@ void AgentController::query(
             callback(errorResponse(confirmationError, drogon::k403Forbidden));
             return;
         }
-        ToolRegistry::execute(
+        EnrollmentService::create(
             drogon::app().getDbClient(),
-            "enroll_in_course",
-            *confirmedArgs,
-            [callback](Json::Value result) {
+            (*confirmedArgs)["student_id"].asInt64(),
+            (*confirmedArgs)["course_id"].asInt64(),
+            (*confirmedArgs)["semester"].asString(),
+            [callback, confirmationId](ServiceResult result) {
+                const bool internalFailure =
+                    result.status == ServiceResult::Status::Error;
+                EnrollmentConfirmationService::finalize(
+                    confirmationId, internalFailure);
+                Json::Value responseBody;
+                if (result.status == ServiceResult::Status::Created)
+                {
+                    responseBody["success"] = true;
+                    responseBody["data"] = std::move(result.data);
+                }
+                else
+                {
+                    responseBody["success"] = false;
+                    responseBody["error"] = result.message;
+                }
                 auto response =
-                    drogon::HttpResponse::newHttpJsonResponse(result);
-                if (!result["success"].asBool())
+                    drogon::HttpResponse::newHttpJsonResponse(responseBody);
+                if (internalFailure)
+                    response->setStatusCode(
+                        drogon::k500InternalServerError);
+                else if (result.status != ServiceResult::Status::Created)
                     response->setStatusCode(drogon::k400BadRequest);
                 callback(response);
             });

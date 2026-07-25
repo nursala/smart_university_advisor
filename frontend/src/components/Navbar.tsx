@@ -1,9 +1,15 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
-const navItems = [
+const studentNavItems = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/chat', label: 'AI Advisor' },
+  { to: '/courses', label: 'Courses' },
+  { to: '/my-plan', label: 'My Plan' },
+  { to: '/profile', label: 'Profile' },
+]
+
+const staffNavItems = [
   { to: '/courses', label: 'Courses' },
   { to: '/profile', label: 'Profile' },
 ]
@@ -22,7 +28,7 @@ export default function Navbar() {
       <div className="app-header-brand">Smart University Advisor</div>
 
       <nav className="app-nav" aria-label="Main navigation">
-        {navItems.map((item) => (
+        {(user?.role === 'student' ? studentNavItems : staffNavItems).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

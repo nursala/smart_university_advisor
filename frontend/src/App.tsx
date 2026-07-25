@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage'
 import ChatPage from './pages/ChatPage'
 import CoursesPage from './pages/CoursesPage'
 import ProfilePage from './pages/ProfilePage'
+import MyPlanPage from './pages/MyPlanPage'
 import './App.css'
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/courses" element={<CoursesPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/my-plan" element={<MyPlanPage />} />
           </Route>
         </Route>
 

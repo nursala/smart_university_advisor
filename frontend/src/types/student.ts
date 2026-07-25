@@ -1,8 +1,7 @@
 import type { DifficultyLevel } from './course'
 
 export type StudentProfile = {
-  student_id: number
-  user_id: number
+  id: number
   name: string
   email: string
   student_number: string
@@ -13,12 +12,24 @@ export type StudentProfile = {
 }
 
 export type AcademicSummary = {
-  student_id: number
   completed_courses_count: number
   active_courses_count: number
   failed_courses_count: number
   completed_credits: number
   current_gpa: number | null
+}
+
+export type PlannedEnrollment = {
+  id: number
+  student_id: number
+  course_id: number
+  course_code: string
+  course_name: string
+  credits: number
+  difficulty_level: DifficultyLevel
+  semester: string
+  status: 'planned'
+  enrolled_at: string
 }
 
 export type AvailableCourse = {

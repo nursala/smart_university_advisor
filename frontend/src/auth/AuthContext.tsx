@@ -1,6 +1,7 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { AuthUser } from '../types/auth'
+import { configureApiAuth } from '../services/api'
 
 type StoredAuth = {
   token: string
@@ -11,8 +12,10 @@ type Auth = {
   user: AuthUser | null
   token: string | null
   isAuthenticated: boolean
+  isRestoring: boolean
   login: (token: string, user: AuthUser) => void
   logout: () => void
+  updateUser: (user: AuthUser) => void
 }
 
 const AuthContextInstance = createContext<Auth | null>(null)
@@ -28,23 +31,38 @@ function readStoredAuth(): StoredAuth | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StoredAuth | null>(readStoredAuth)
+  const logout = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY)
+    setState(null)
+  }, [])
+
+  useEffect(() => {
+    configureApiAuth(state?.token ?? null, logout)
+    return () => configureApiAuth(null, null)
+  }, [state?.token, logout])
 
   const value = useMemo<Auth>(
     () => ({
       user: state?.user ?? null,
       token: state?.token ?? null,
       isAuthenticated: Boolean(state),
+      isRestoring: false,
       login: (token, user) => {
         const next = { token, user }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
         setState(next)
       },
-      logout: () => {
-        localStorage.removeItem(STORAGE_KEY)
-        setState(null)
+      logout,
+      updateUser: (user) => {
+        setState((current) => {
+          if (!current) return current
+          const next = { ...current, user }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+          return next
+        })
       },
     }),
-    [state],
+    [state, logout],
   )
 
   return (

@@ -22,6 +22,56 @@ Json::Value enrollmentJson(const drogon::orm::Row &row)
 }
 }  // namespace
 
+void EnrollmentService::listPlanned(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    std::function<void(ServiceResult)> &&callback)
+{
+    if (studentId <= 0)
+    {
+        callback(ServiceResult::badRequest(
+            "student_id must be a positive integer"));
+        return;
+    }
+    database->execSqlAsync(
+        "SELECT e.id,e.student_id,e.course_id,c.code AS course_code,"
+        " c.name AS course_name,c.credits,c.difficulty_level,e.semester,"
+        " e.status,e.enrolled_at::text AS enrolled_at"
+        " FROM enrollments e JOIN courses c ON c.id=e.course_id"
+        " WHERE e.student_id=$1 AND e.status='planned'"
+        " ORDER BY e.semester,c.code,e.id",
+        [callback](const drogon::orm::Result &result) {
+            Json::Value rows(Json::arrayValue);
+            for (const auto &row : result)
+            {
+                Json::Value value;
+                value["id"] = Json::Int64(row["id"].as<int64_t>());
+                value["student_id"] =
+                    Json::Int64(row["student_id"].as<int64_t>());
+                value["course_id"] =
+                    Json::Int64(row["course_id"].as<int64_t>());
+                value["course_code"] = row["course_code"].as<std::string>();
+                value["course_name"] = row["course_name"].as<std::string>();
+                value["credits"] = row["credits"].as<int>();
+                value["difficulty_level"] =
+                    row["difficulty_level"].as<std::string>();
+                value["semester"] = row["semester"].as<std::string>();
+                value["status"] = row["status"].as<std::string>();
+                value["enrolled_at"] =
+                    row["enrolled_at"].as<std::string>();
+                rows.append(std::move(value));
+            }
+            callback(ServiceResult::ok(std::move(rows)));
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to list planned enrollments: "
+                      << exception.base().what();
+            callback(ServiceResult::error(
+                "Unable to load planned enrollments"));
+        },
+        studentId);
+}
+
 namespace
 {
 void createInTransaction(

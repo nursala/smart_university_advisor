@@ -28,7 +28,8 @@ development; see `.env.example`).
 
 ## Schema
 
-7 tables, derived from [`database/schema.sql`](database/schema.sql):
+7 tables and 7 foreign-key constraints, derived from
+[`database/schema.sql`](database/schema.sql):
 
 ```mermaid
 erDiagram
@@ -106,6 +107,8 @@ Key constraints: `students.year_level` 1–6, `students.current_gpa` 0–100,
 
 ## Endpoints
 
+The application exposes 17 meaningful Drogon routes:
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/auth/register` | Atomically create a student account and linked record; returns `{ token, user }` |
@@ -121,11 +124,27 @@ Key constraints: `students.year_level` 1–6, `students.current_gpa` 0–100,
 | POST | `/students/{id}/semester-plan` | Greedily build a semester plan within a credit limit |
 | POST | `/students/{id}/risk-analysis` | Academic risk (Low/Medium/High) of taking a set of courses together |
 | POST | `/enrollments` | Create an enrollment (student + course + semester) |
+| GET | `/enrollments/planned` | List the authenticated student's planned enrollments |
 | PATCH | `/enrollments/{id}/grade` | Record or update a grade for an enrollment; marks it completed |
 | DELETE | `/enrollments/{id}` | Delete an enrollment |
 | POST | `/agent/query` | Ask the Gemini-powered advisor a natural-language question for a student |
 
 ## Auth
+
+The React application provides Dashboard, Courses, Profile, AI Advisor, and
+My Plan pages. The student workflow is register (automatic login), view the
+new `Undeclared` profile, browse nullable-safe course details, request
+recommendations or a semester preview, ask the advisor to propose an
+enrollment, explicitly confirm or cancel it, and manage the resulting
+planned enrollment in My Plan. Profile editing is limited to the name and
+email fields supported by `/users/me`; academic history, GPA, and grades are
+not editable by students.
+
+The confirmation card submits the exact server-issued `confirmation_id`.
+Cancel is UI-only and performs no mutation. Proposals expire after five
+minutes, and an API restart invalidates them because the confirmation store
+is process-local. Chat messages survive React route navigation but are
+intentionally cleared by a full page refresh.
 
 Passwords are hashed with PBKDF2-HMAC-SHA256 (`services/PasswordHasher.cc`),
 not bcrypt -- chosen to avoid a new system dependency, since OpenSSL is
@@ -185,6 +204,11 @@ The confirmation store is intentionally process-local for this course
 project. Outstanding confirmations are lost on API restart and are not
 shared between multiple API replicas.
 
+Confirmation is guarded in-flight before enrollment execution. Successful
+creation and academic-rule rejection consume the proposal; an internal
+database/service failure releases the guard so an unexpired proposal can be
+retried without allowing concurrent replay.
+
 ## Agent tools
 
 `POST /agent/query` runs an agentic loop against Gemini with 9 function
@@ -201,3 +225,35 @@ same service layer as the REST endpoints above:
 7. `get_course_details` — full details for a course
 8. `search_courses` — filtered course catalog search
 9. `enroll_in_course` - propose an enrollment for explicit confirmation
+
+Sanitized live Gemini and deterministic mocked regression transcripts are in
+[`docs/agent-demo.md`](docs/agent-demo.md). Each transcript is explicitly
+labeled so mocked output cannot be mistaken for live evidence.
+
+## Submission rubric
+
+| Requirement | Evidence |
+| --- | --- |
+| 10+ Drogon endpoints | 17 routes in controller headers and the endpoint table above |
+| PostgreSQL with 5+ related tables | 7 tables and 7 FKs in [`database/schema.sql`](database/schema.sql) |
+| ERD/schema documentation | Mermaid ERD above |
+| 8+ function tools | 9 declarations in [`services/ToolRegistry.cc`](services/ToolRegistry.cc) |
+| Gemini free API integration | Live `gemini-3.1-flash-lite` evidence in [`docs/agent-demo.md`](docs/agent-demo.md) |
+| Real agentic loop | Six-step-capped loop in [`controllers/AgentController.cc`](controllers/AgentController.cc) |
+| Demonstrated 3+ tool chain | Four-tool sanitized live transcript in [`docs/agent-demo.md`](docs/agent-demo.md) |
+| Agent database operation | Confirmed enrollment through `enroll_in_course`, documented in [`docs/agent-demo.md`](docs/agent-demo.md) |
+| User management | Register/login/profile routes and PBKDF2/JWT services |
+| Docker Compose | [`docker-compose.yml`](docker-compose.yml) |
+| React TypeScript UI | [`frontend/src/App.tsx`](frontend/src/App.tsx) |
+| Layer organization | Controllers, filters, services, database, frontend, and tests directories |
+
+## Known limitations
+
+- Enrollment confirmations are process-local and disappear on API restart.
+- Chat history survives client-side navigation but not a full page refresh.
+- There is no staff administration portal; staff navigation is intentionally
+  limited.
+- SSE, persistent conversational memory, and multi-replica confirmation
+  storage are not implemented.
+- Live Gemini requires a locally configured API key; secrets are never stored
+  in the repository.

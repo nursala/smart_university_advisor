@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { getAcademicSummary, getProfile } from '../services/studentApi'
-import { isAuthError } from '../services/api'
+import { updateCurrentUser } from '../services/userApi'
 import LoadingState from '../components/LoadingState'
 import ErrorMessage from '../components/ErrorMessage'
 import EmptyState from '../components/EmptyState'
@@ -14,30 +13,30 @@ type ProfileState =
   | { status: 'loaded'; profile: StudentProfile; summary: AcademicSummary }
 
 export default function ProfilePage() {
-  const { user, token, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user, updateUser } = useAuth()
   const studentId = user?.student_id ?? null
 
   const [state, setState] = useState<ProfileState>({ status: 'loading' })
+  const [reloadKey, setReloadKey] = useState(0)
+  const [isEditing, setIsEditing] = useState(false)
+  const [name, setName] = useState(user?.name ?? '')
+  const [email, setEmail] = useState(user?.email ?? '')
+  const [saveError, setSaveError] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    if (studentId === null || !token) return
+    if (studentId === null) return
     let ignore = false
 
     setState({ status: 'loading' })
 
-    Promise.all([getProfile(studentId, token), getAcademicSummary(studentId, token)])
+    Promise.all([getProfile(studentId), getAcademicSummary(studentId)])
       .then(([profile, summary]) => {
         if (ignore) return
         setState({ status: 'loaded', profile, summary })
       })
       .catch((error: unknown) => {
         if (ignore) return
-        if (isAuthError(error)) {
-          logout()
-          navigate('/login', { replace: true })
-          return
-        }
         setState({
           status: 'error',
           message: error instanceof Error ? error.message : 'Unable to load your profile.',
@@ -47,7 +46,26 @@ export default function ProfilePage() {
     return () => {
       ignore = true
     }
-  }, [studentId, token, logout, navigate])
+  }, [studentId, reloadKey])
+
+  async function saveIdentity() {
+    if (!name.trim() || !email.trim()) {
+      setSaveError('Name and email are required.')
+      return
+    }
+    setIsSaving(true)
+    setSaveError('')
+    try {
+      const updated = await updateCurrentUser({ name: name.trim(), email: email.trim() })
+      updateUser(updated)
+      setIsEditing(false)
+      setReloadKey((value) => value + 1)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Unable to update your profile.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   if (studentId === null) {
     return (
@@ -65,13 +83,38 @@ export default function ProfilePage() {
       {state.status === 'loading' && <LoadingState label="Loading your profile..." />}
 
       {state.status === 'error' && (
-        <ErrorMessage message={state.message} onRetry={() => setState({ status: 'loading' })} />
+        <ErrorMessage message={state.message} onRetry={() => setReloadKey((value) => value + 1)} />
       )}
 
       {state.status === 'loaded' && (
         <>
           <section className="panel">
             <h2>Identity</h2>
+            {isEditing ? (
+              <div className="profile-edit">
+                <label>
+                  Name
+                  <input value={name} onChange={(event) => setName(event.target.value)} />
+                </label>
+                <label>
+                  Email
+                  <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+                </label>
+                {saveError && <p className="form-error" role="alert">{saveError}</p>}
+                <div className="actions">
+                  <button type="button" onClick={saveIdentity} disabled={isSaving}>
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button type="button" className="secondary-button" onClick={() => setIsEditing(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="secondary-button" onClick={() => setIsEditing(true)}>
+                Edit name and email
+              </button>
+            )}
             <dl className="detail-list">
               <div>
                 <dt>Name</dt>
@@ -105,7 +148,7 @@ export default function ProfilePage() {
               label="Current GPA"
               value={
                 state.summary.current_gpa === null
-                  ? 'No grades yet'
+                  ? 'Not available'
                   : state.summary.current_gpa.toFixed(2)
               }
             />

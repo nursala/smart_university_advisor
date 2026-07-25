@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import {
   buildSemesterPlan,
@@ -8,7 +8,6 @@ import {
   getCourseRecommendations,
   getProfile,
 } from '../services/studentApi'
-import { isAuthError } from '../services/api'
 import LoadingState from '../components/LoadingState'
 import ErrorMessage from '../components/ErrorMessage'
 import EmptyState from '../components/EmptyState'
@@ -32,22 +31,21 @@ type OverviewState =
     }
 
 export default function DashboardPage() {
-  const { user, token, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
   const studentId = user?.student_id ?? null
 
   const [overview, setOverview] = useState<OverviewState>({ status: 'loading' })
 
   useEffect(() => {
-    if (studentId === null || !token) return
+    if (studentId === null) return
     let ignore = false
 
     setOverview({ status: 'loading' })
 
     Promise.all([
-      getProfile(studentId, token),
-      getAcademicSummary(studentId, token),
-      getAvailableCourses(studentId, token),
+      getProfile(studentId),
+      getAcademicSummary(studentId),
+      getAvailableCourses(studentId),
     ])
       .then(([profile, summary, availableCourses]) => {
         if (ignore) return
@@ -60,11 +58,6 @@ export default function DashboardPage() {
       })
       .catch((error: unknown) => {
         if (ignore) return
-        if (isAuthError(error)) {
-          logout()
-          navigate('/login', { replace: true })
-          return
-        }
         setOverview({
           status: 'error',
           message: error instanceof Error ? error.message : 'Unable to load your dashboard.',
@@ -74,7 +67,7 @@ export default function DashboardPage() {
     return () => {
       ignore = true
     }
-  }, [studentId, token, logout, navigate])
+  }, [studentId])
 
   if (studentId === null) {
     return (
@@ -105,7 +98,7 @@ export default function DashboardPage() {
               label="Current GPA"
               value={
                 overview.summary.current_gpa === null
-                  ? 'No grades yet'
+                  ? 'Not available'
                   : overview.summary.current_gpa.toFixed(2)
               }
             />
@@ -131,10 +124,9 @@ export default function DashboardPage() {
             </Link>
           </section>
 
-          <RecommendationsPanel studentId={studentId} token={token ?? ''} />
+          <RecommendationsPanel studentId={studentId} />
           <SemesterPlanPanel
             studentId={studentId}
-            token={token ?? ''}
             defaultMaxCredits={overview.profile.max_weekly_credits}
           />
         </>
@@ -158,14 +150,14 @@ type RecommendationsState =
   | { status: 'error'; message: string }
   | { status: 'loaded'; recommendations: CourseRecommendation[] }
 
-function RecommendationsPanel({ studentId, token }: { studentId: number; token: string }) {
+function RecommendationsPanel({ studentId }: { studentId: number }) {
   const [preferredDifficulty, setPreferredDifficulty] = useState<DifficultyLevel | ''>('')
   const [state, setState] = useState<RecommendationsState>({ status: 'idle' })
 
   async function handleGetRecommendations() {
     setState({ status: 'loading' })
     try {
-      const response = await getCourseRecommendations(studentId, token, {
+      const response = await getCourseRecommendations(studentId, {
         preferredDifficulty: preferredDifficulty || undefined,
       })
       setState({ status: 'loaded', recommendations: response.recommendations })
@@ -243,11 +235,9 @@ type SemesterPlanState =
 
 function SemesterPlanPanel({
   studentId,
-  token,
   defaultMaxCredits,
 }: {
   studentId: number
-  token: string
   defaultMaxCredits: number
 }) {
   const [maxCredits, setMaxCredits] = useState(String(defaultMaxCredits))
@@ -262,7 +252,7 @@ function SemesterPlanPanel({
 
     setState({ status: 'loading' })
     try {
-      const response = await buildSemesterPlan(studentId, token, {
+      const response = await buildSemesterPlan(studentId, {
         maxCredits: parsedMaxCredits,
       })
       setState({

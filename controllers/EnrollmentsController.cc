@@ -28,6 +28,44 @@ bool isPositiveInteger(const Json::Value &value, int64_t &out)
 }
 }  // namespace
 
+void EnrollmentsController::listPlanned(
+    const drogon::HttpRequestPtr &request,
+    std::function<void(const drogon::HttpResponsePtr &)> &&callback) const
+{
+    const auto identity = AuthorizationService::identity(request);
+    int64_t requestedStudentId = 0;
+    const auto parameter = request->getParameter("student_id");
+    if (!parameter.empty())
+    {
+        try
+        {
+            size_t consumed = 0;
+            requestedStudentId = std::stoll(parameter, &consumed);
+            if (consumed != parameter.size() || requestedStudentId <= 0)
+                throw std::invalid_argument("invalid");
+        }
+        catch (const std::exception &)
+        {
+            callback(errorResponse("student_id must be a positive integer",
+                                   drogon::k400BadRequest));
+            return;
+        }
+    }
+
+    int64_t authorizedStudentId = 0;
+    std::string authorizationError;
+    if (!AuthorizationService::authorizeStudent(
+            identity, requestedStudentId, authorizedStudentId,
+            authorizationError))
+    {
+        callback(errorResponse(authorizationError, drogon::k403Forbidden));
+        return;
+    }
+    EnrollmentService::listPlanned(
+        drogon::app().getDbClient(), authorizedStudentId,
+        [callback](ServiceResult result) { callback(toHttpResponse(result)); });
+}
+
 void EnrollmentsController::create(
     const drogon::HttpRequestPtr &request,
     std::function<void(const drogon::HttpResponsePtr &)> &&callback) const

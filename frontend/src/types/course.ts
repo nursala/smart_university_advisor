@@ -7,9 +7,6 @@ export type CourseSummary = {
   department: string
   credits: number
   difficulty_level: DifficultyLevel
-  estimated_weekly_hours: number
-  instructor_id: number | null
-  instructor_name: string | null
 }
 
 export type CourseFilters = {
@@ -20,7 +17,6 @@ export type CourseFilters = {
 }
 
 export type CoursePrerequisite = {
-  id: number
   code: string
   name: string
   minimum_grade: number
@@ -34,11 +30,8 @@ export type CourseDetails = {
   credits: number
   difficulty_level: DifficultyLevel
   estimated_weekly_hours: number
-  description: string
-  instructor: {
-    id: number | null
-    name: string | null
-    email: string | null
-  }
+  description: string | null
+  instructor_id: number | null
+  instructor_name: string | null
   prerequisites: CoursePrerequisite[]
 }

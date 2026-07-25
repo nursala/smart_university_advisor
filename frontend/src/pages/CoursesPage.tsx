@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { getCourseDetails, getCourses } from '../services/courseApi'
 import { analyzeRisk } from '../services/studentApi'
-import { isAuthError } from '../services/api'
 import LoadingState from '../components/LoadingState'
 import ErrorMessage from '../components/ErrorMessage'
 import EmptyState from '../components/EmptyState'
@@ -33,8 +31,7 @@ type RiskState =
 const emptyFilters: CourseFilters = { department: '', difficulty: '', credits: '', instructor: '' }
 
 export default function CoursesPage() {
-  const { user, token, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
   const studentId = user?.student_id ?? null
 
   const [filters, setFilters] = useState<CourseFilters>(emptyFilters)
@@ -51,7 +48,7 @@ export default function CoursesPage() {
     let ignore = false
     setCoursesState({ status: 'loading' })
 
-    getCourses(appliedFilters, token)
+    getCourses(appliedFilters)
       .then((courses) => {
         if (!ignore) setCoursesState({ status: 'loaded', courses })
       })
@@ -66,7 +63,7 @@ export default function CoursesPage() {
     return () => {
       ignore = true
     }
-  }, [appliedFilters, token])
+  }, [appliedFilters])
 
   function handleApplyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -81,7 +78,7 @@ export default function CoursesPage() {
   function handleViewDetails(courseId: number) {
     setSelectedCourseId(courseId)
     setDetailsState({ status: 'loading' })
-    getCourseDetails(courseId, token)
+    getCourseDetails(courseId)
       .then((details) => setDetailsState({ status: 'loaded', details }))
       .catch((error: unknown) => {
         setDetailsState({
@@ -105,14 +102,9 @@ export default function CoursesPage() {
 
     setRiskState({ status: 'loading' })
     try {
-      const result = await analyzeRisk(studentId, token ?? '', Array.from(selectedForRisk))
+      const result = await analyzeRisk(studentId, Array.from(selectedForRisk))
       setRiskState({ status: 'loaded', result })
     } catch (error) {
-      if (isAuthError(error)) {
-        logout()
-        navigate('/login', { replace: true })
-        return
-      }
       setRiskState({
         status: 'error',
         message: error instanceof Error ? error.message : 'Unable to analyze risk.',
@@ -214,9 +206,7 @@ export default function CoursesPage() {
                     {course.code} &middot; {course.name}
                   </p>
                   <p className="course-card-meta">
-                    {course.department} &middot; {course.credits} credits &middot;{' '}
-                    {course.estimated_weekly_hours} hrs/week
-                    {course.instructor_name ? ` · ${course.instructor_name}` : ''}
+                    {course.department} &middot; {course.credits} credits
                   </p>
                   <DifficultyBadge level={course.difficulty_level} />
                 </div>
@@ -239,13 +229,18 @@ export default function CoursesPage() {
               <EmptyState message="Select a course to see its full details and prerequisites." />
             )}
             {detailsState.status === 'loading' && <LoadingState label="Loading details..." />}
-            {detailsState.status === 'error' && <ErrorMessage message={detailsState.message} />}
+            {detailsState.status === 'error' && (
+              <ErrorMessage
+                message={detailsState.message}
+                onRetry={() => selectedCourseId !== null && handleViewDetails(selectedCourseId)}
+              />
+            )}
             {detailsState.status === 'loaded' && (
               <div className="course-details">
                 <p className="course-card-title">
                   {detailsState.details.code} &middot; {detailsState.details.name}
                 </p>
-                <p>{detailsState.details.description}</p>
+                <p>{detailsState.details.description ?? 'No description available.'}</p>
                 <dl className="detail-list">
                   <div>
                     <dt>Department</dt>
@@ -262,10 +257,7 @@ export default function CoursesPage() {
                   <div>
                     <dt>Instructor</dt>
                     <dd>
-                      {detailsState.details.instructor.name ?? 'Unassigned'}
-                      {detailsState.details.instructor.email
-                        ? ` (${detailsState.details.instructor.email})`
-                        : ''}
+                      {detailsState.details.instructor_name ?? 'Unassigned'}
                     </dd>
                   </div>
                 </dl>
@@ -276,7 +268,7 @@ export default function CoursesPage() {
                 ) : (
                   <ul className="prerequisite-list">
                     {detailsState.details.prerequisites.map((prerequisite) => (
-                      <li key={prerequisite.id}>
+                      <li key={prerequisite.code}>
                         {prerequisite.code} &middot; {prerequisite.name} (min grade{' '}
                         {prerequisite.minimum_grade})
                       </li>

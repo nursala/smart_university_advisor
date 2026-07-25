@@ -52,7 +52,24 @@ const server = http.createServer((req, res) => {
             const firstText = parsed?.contents?.[0]?.parts?.[0]?.text || '';
             const hasToolResponse = (parsed?.contents || []).some((turn) =>
                 (turn?.parts || []).some((part) => part?.functionResponse));
-            const parts =
+            const toolResponses = (parsed?.contents || []).flatMap((turn) =>
+                (turn?.parts || []).filter((part) => part?.functionResponse));
+            let parts;
+            if (firstText.includes('multi-tool-demo'))
+            {
+                const chain = [
+                    { name: 'get_student_profile', args: { student_id: 999999 } },
+                    { name: 'get_academic_summary', args: { student_id: 999999 } },
+                    { name: 'get_available_courses', args: { student_id: 999999 } },
+                    { name: 'build_semester_plan', args: { student_id: 999999, max_credits: 12 } },
+                ];
+                parts = toolResponses.length < chain.length
+                    ? [{ functionCall: chain[toolResponses.length] }]
+                    : [{ text: 'Your profile and academic summary were reviewed. Eligible courses were checked, and a balanced plan within 12 credits was prepared from those results.' }];
+            }
+            else
+            {
+                parts =
                 firstText.includes('enroll-test') && !hasToolResponse
                     ? [{
                         functionCall: {
@@ -65,6 +82,7 @@ const server = http.createServer((req, res) => {
                         },
                     }]
                     : [{ text: `Echo: ${studentId}` }];
+            }
             const response = {
                 candidates: [
                     {

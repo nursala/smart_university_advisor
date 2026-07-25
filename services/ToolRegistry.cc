@@ -8,6 +8,7 @@
 #include "ToolResult.h"
 #include "Tools.h"
 #include "EnrollmentConfirmationService.h"
+#include "AcademicRules.h"
 
 namespace
 {
@@ -109,21 +110,48 @@ void ToolRegistry::executeAuthorized(
                 "course_id and semester are required for enrollment"));
             return;
         }
-        try
+        const auto courseId = authorizedArgs["course_id"].asInt64();
+        const auto semester = authorizedArgs["semester"].asString();
+        if (courseId <= 0)
         {
-            Json::Value result;
-            result["success"] = true;
-            result["data"] = EnrollmentConfirmationService::propose(
-                authorizedUserId,
-                authorizedStudentId,
-                authorizedArgs["course_id"].asInt64(),
-                authorizedArgs["semester"].asString());
-            callback(std::move(result));
+            callback(toolFailure("course_id must be a positive integer"));
+            return;
         }
-        catch (const std::exception &exception)
+        if (!AcademicRules::isValidSemester(semester))
         {
-            callback(toolFailure(exception.what()));
+            callback(toolFailure(std::string("semester must use format ") +
+                                 AcademicRules::semesterFormat()));
+            return;
         }
+        database->execSqlAsync(
+            "SELECT code,name FROM courses WHERE id=$1",
+            [callback, authorizedUserId, authorizedStudentId, courseId,
+             semester](const drogon::orm::Result &rows) {
+                if (rows.empty())
+                {
+                    callback(toolFailure("Course not found"));
+                    return;
+                }
+                try
+                {
+                    Json::Value result;
+                    result["success"] = true;
+                    result["data"] = EnrollmentConfirmationService::propose(
+                        authorizedUserId, authorizedStudentId, courseId,
+                        semester,
+                        rows.front()["code"].as<std::string>(),
+                        rows.front()["name"].as<std::string>());
+                    callback(std::move(result));
+                }
+                catch (const std::exception &exception)
+                {
+                    callback(toolFailure(exception.what()));
+                }
+            },
+            [callback](const drogon::orm::DrogonDbException &) {
+                callback(toolFailure("Unable to load course"));
+            },
+            courseId);
         return;
     }
     execute(database, toolName, authorizedArgs, std::move(callback));

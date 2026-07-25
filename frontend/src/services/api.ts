@@ -14,13 +14,22 @@ export function isAuthError(error: unknown): error is ApiError {
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
-  token?: string | null
   body?: unknown
 }
 
 const fallbackErrorMessage = 'Something went wrong. Please try again.'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+let authToken: string | null = null
+let unauthorizedHandler: (() => void) | null = null
+
+export function configureApiAuth(
+  token: string | null,
+  onUnauthorized: (() => void) | null,
+) {
+  authToken = token
+  unauthorizedHandler = onUnauthorized
+}
 
 export async function apiRequest<T>(
   path: string,
@@ -30,8 +39,8 @@ export async function apiRequest<T>(
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json'
   }
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`
   }
 
   let response: Response
@@ -52,6 +61,7 @@ export async function apiRequest<T>(
       typeof (data as { error?: unknown }).error === 'string'
         ? (data as { error: string }).error
         : fallbackErrorMessage
+    if (response.status === 401) unauthorizedHandler?.()
     throw new ApiError(message, response.status)
   }
 
