@@ -1,5 +1,5 @@
 import type { FormEvent, KeyboardEvent } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { confirmEnrollment, queryAgent } from '../services/agentApi'
 import { useChat } from '../chat/ChatContext'
@@ -13,8 +13,13 @@ export default function ChatPage() {
   const [draft, setDraft] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [formError, setFormError] = useState('')
+  const endRef = useRef<HTMLDivElement>(null)
   const trimmed = draft.trim()
   const nextId = useMemo(() => Math.max(...messages.map((item) => item.id)) + 1, [messages])
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages, formError, isSending])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -36,7 +41,14 @@ export default function ChatPage() {
         actionState: response.proposed_action ? 'pending' : undefined,
       }])
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : fallbackError)
+      const message = error instanceof Error ? error.message : fallbackError
+      setFormError(message)
+      setMessages((current) => [...current, {
+        id: nextId + 1,
+        role: 'assistant',
+        content: message,
+        status: 'error',
+      }])
     } finally {
       setIsSending(false)
     }
@@ -110,6 +122,7 @@ export default function ChatPage() {
               )}
             </article>
           ))}
+          <div ref={endRef} aria-hidden="true" />
         </section>
         <div className="message-field">
           <label htmlFor="message">Message</label>

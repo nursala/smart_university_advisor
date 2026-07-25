@@ -7,10 +7,10 @@ import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <ChatProvider>
+    <ChatProvider>
+      <AuthProvider>
         <App />
-      </ChatProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </ChatProvider>
   </StrictMode>,
 )

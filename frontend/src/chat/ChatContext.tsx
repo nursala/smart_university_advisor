@@ -16,15 +16,21 @@ export type ChatMessage = {
 const ChatContext = createContext<{
   messages: ChatMessage[]
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>
+  resetChat: () => void
 } | null>(null)
 
+const initialMessages: ChatMessage[] = [{
+  id: 1,
+  role: 'assistant',
+  content: 'Hello! How can I help with your academic planning?',
+}]
+
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([{
-    id: 1,
-    role: 'assistant',
-    content: 'Hello! How can I help with your academic planning?',
-  }])
-  const value = useMemo(() => ({ messages, setMessages }), [messages])
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
+  const value = useMemo(
+    () => ({ messages, setMessages, resetChat: () => setMessages(initialMessages) }),
+    [messages],
+  )
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }
 
