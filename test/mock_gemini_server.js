@@ -32,9 +32,10 @@ const server = http.createServer((req, res) => {
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {
         let studentId = 'unknown';
+        let parsed;
         try
         {
-            const parsed = JSON.parse(body);
+            parsed = JSON.parse(body);
             const text = parsed?.contents?.[0]?.parts?.[0]?.text || '';
             const match = text.match(/helping student_id (\d+)/);
             if (match)
@@ -48,11 +49,27 @@ const server = http.createServer((req, res) => {
         }
 
         setTimeout(() => {
+            const firstText = parsed?.contents?.[0]?.parts?.[0]?.text || '';
+            const hasToolResponse = (parsed?.contents || []).some((turn) =>
+                (turn?.parts || []).some((part) => part?.functionResponse));
+            const parts =
+                firstText.includes('enroll-test') && !hasToolResponse
+                    ? [{
+                        functionCall: {
+                            name: 'enroll_in_course',
+                            args: {
+                                student_id: 999999,
+                                course_id: 1,
+                                semester: '2028-Fall',
+                            },
+                        },
+                    }]
+                    : [{ text: `Echo: ${studentId}` }];
             const response = {
                 candidates: [
                     {
                         content: {
-                            parts: [{ text: `Echo: ${studentId}` }],
+                            parts,
                         },
                     },
                 ],

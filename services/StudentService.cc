@@ -1,6 +1,7 @@
 #include "StudentService.h"
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 
 #include <drogon/drogon.h>
@@ -61,7 +62,10 @@ void StudentService::fetchAvailableCourses(
         "WHERE NOT EXISTS ("
         "SELECT 1 FROM enrollments e "
         "WHERE e.student_id = $1 AND e.course_id = c.id "
-        "AND e.status IN ('active', 'completed')) "
+        "AND (e.status IN ('planned', 'active') "
+        "OR (e.status='completed' AND EXISTS ("
+        " SELECT 1 FROM grades ag WHERE ag.enrollment_id=e.id "
+        " AND ag.passed=TRUE)))) "
         "AND NOT EXISTS ("
         "SELECT 1 FROM course_prerequisites cp "
         "WHERE cp.course_id = c.id "
@@ -71,7 +75,7 @@ void StudentService::fetchAvailableCourses(
         "WHERE e.student_id = $2 "
         "AND e.course_id = cp.prerequisite_course_id "
         "AND e.status = 'completed' "
-        "AND g.grade >= cp.minimum_grade)) "
+        "AND g.passed=TRUE AND g.grade >= cp.minimum_grade)) "
         "ORDER BY c.id",
         std::move(onSuccess),
         std::move(onError),
@@ -107,7 +111,10 @@ void StudentService::getProfile(
             student["current_gpa"] = row["current_gpa"].isNull()
                                          ? Json::Value(Json::nullValue)
                                          : Json::Value(
-                                               row["current_gpa"].as<double>());
+                                               std::round(
+                                                   row["current_gpa"].as<double>() *
+                                                   100.0) /
+                                               100.0);
             student["max_weekly_credits"] =
                 row["max_weekly_credits"].as<int>();
             student["name"] = row["name"].as<std::string>();
@@ -155,7 +162,10 @@ void StudentService::getAcademicSummary(
             summary["current_gpa"] = row["current_gpa"].isNull()
                                          ? Json::Value(Json::nullValue)
                                          : Json::Value(
-                                               row["current_gpa"].as<double>());
+                                               std::round(
+                                                   row["current_gpa"].as<double>() *
+                                                   100.0) /
+                                               100.0);
             summary["completed_courses_count"] = Json::Int64(
                 row["completed_courses_count"].as<int64_t>());
             summary["active_courses_count"] =
@@ -243,8 +253,11 @@ void StudentService::getCourseRecommendations(
                 return;
             }
 
-            const auto currentGpa =
-                students.front()["current_gpa"].as<double>();
+            const std::optional<double> currentGpa =
+                students.front()["current_gpa"].isNull()
+                    ? std::nullopt
+                    : std::optional<double>(
+                          students.front()["current_gpa"].as<double>());
 
             fetchAvailableCourses(
                 database,
@@ -267,14 +280,23 @@ void StudentService::getCourseRecommendations(
                             score += 30;
                         }
 
-                        if (currentGpa < 70)
+                        if (!currentGpa.has_value())
+                        {
+                            if (course.difficultyLevel == "easy")
+                                score += 20;
+                            else if (course.difficultyLevel == "medium")
+                                score += 15;
+                            else
+                                score += 10;
+                        }
+                        else if (*currentGpa < 70)
                         {
                             if (course.difficultyLevel == "easy")
                                 score += 25;
                             else if (course.difficultyLevel == "medium")
                                 score += 15;
                         }
-                        else if (currentGpa <= 85)
+                        else if (*currentGpa <= 85)
                         {
                             if (course.difficultyLevel == "easy")
                                 score += 10;
@@ -325,9 +347,11 @@ void StudentService::getCourseRecommendations(
                         entry["name"] = course.name;
                         entry["credits"] = course.credits;
                         entry["difficulty_level"] = course.difficultyLevel;
-                        entry["reason"] =
-                            "Recommended because it matches your academic "
-                            "level and prerequisites are satisfied.";
+                        entry["reason"] = currentGpa.has_value()
+                            ? "Eligible with prerequisites satisfied; ranked "
+                              "by GPA, difficulty preference, and credits."
+                            : "Eligible with prerequisites satisfied; ranked "
+                              "without a GPA penalty because no grades exist.";
                         recommendations.append(std::move(entry));
                     }
 
@@ -372,8 +396,16 @@ void StudentService::buildSemesterPlan(
                 return;
             }
 
-            const int64_t effectiveMaxCredits = maxCredits.value_or(
-                students.front()["max_weekly_credits"].as<int64_t>());
+            const auto configuredMax =
+                students.front()["max_weekly_credits"].as<int64_t>();
+            if (maxCredits.has_value() && *maxCredits <= 0)
+            {
+                callback(ServiceResult::badRequest(
+                    "max_credits must be a positive finite value"));
+                return;
+            }
+            const int64_t effectiveMaxCredits =
+                std::min(maxCredits.value_or(configuredMax), configuredMax);
 
             fetchAvailableCourses(
                 database,
@@ -481,8 +513,11 @@ void StudentService::analyzeRisk(
                 return;
             }
 
-            const auto currentGpa =
-                students.front()["current_gpa"].as<double>();
+            const std::optional<double> currentGpa =
+                students.front()["current_gpa"].isNull()
+                    ? std::nullopt
+                    : std::optional<double>(
+                          students.front()["current_gpa"].as<double>());
             const auto maxWeeklyCredits =
                 students.front()["max_weekly_credits"].as<int>();
 
@@ -500,7 +535,6 @@ void StudentService::analyzeRisk(
                  studentId,
                  currentGpa,
                  maxWeeklyCredits,
-                 courseIds,
                  uniqueCourseIds](const drogon::orm::Result &courses) {
                     std::map<int64_t, AvailableCourse> coursesById;
                     for (const auto &row : courses)
@@ -528,7 +562,7 @@ void StudentService::analyzeRisk(
                     int64_t totalCredits = 0;
                     int64_t estimatedWeeklyHours = 0;
                     int64_t hardCoursesCount = 0;
-                    for (const auto courseId : courseIds)
+                    for (const auto courseId : uniqueCourseIds)
                     {
                         const auto &course = coursesById.at(courseId);
                         totalCredits += course.credits;
@@ -543,7 +577,7 @@ void StudentService::analyzeRisk(
                     Json::Value reasons(Json::arrayValue);
                     Json::Value recommendations(Json::arrayValue);
 
-                    if (currentGpa < 60)
+                    if (currentGpa.has_value() && *currentGpa < 60)
                     {
                         riskScore += 2;
                         reasons.append("The student's GPA is below 60.");
@@ -551,7 +585,7 @@ void StudentService::analyzeRisk(
                             "Consider reducing the course load and focusing "
                             "on GPA recovery.");
                     }
-                    else if (currentGpa < 70)
+                    else if (currentGpa.has_value() && *currentGpa < 70)
                     {
                         riskScore += 1;
                         reasons.append("The student's GPA is below 70.");

@@ -37,6 +37,7 @@ class ToolRegistry
         const drogon::orm::DbClientPtr &database,
         const std::string &toolName,
         const Json::Value &args,
+        int64_t authorizedUserId,
         int64_t authorizedStudentId,
         std::function<void(Json::Value)> &&callback);
 

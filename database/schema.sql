@@ -127,6 +127,13 @@ CREATE TABLE enrollments (
     CONSTRAINT chk_enrollments_status
         CHECK (status IN ('planned', 'active', 'completed', 'dropped')),
 
+    -- Existing historical seed semesters predate this canonical format.
+    -- NOT VALID preserves those rows while enforcing the format for all
+    -- newly inserted or updated enrollments.
+    CONSTRAINT chk_enrollments_semester_format
+        CHECK (semester ~ '^[0-9]{4}-(Spring|Summer|Fall|Winter)$')
+        NOT VALID,
+
     CONSTRAINT uq_student_course_semester
         UNIQUE (student_id, course_id, semester)
 );
@@ -144,7 +151,10 @@ CREATE TABLE grades (
         ON DELETE CASCADE,
 
     CONSTRAINT chk_grades_grade
-        CHECK (grade >= 0 AND grade <= 100)
+        CHECK (grade >= 0 AND grade <= 100),
+
+    CONSTRAINT chk_grades_passed_consistency
+        CHECK (passed = (grade >= 60))
 );
 
 CREATE INDEX idx_students_user_id ON students(user_id);
@@ -163,5 +173,11 @@ CREATE INDEX idx_enrollments_student_id ON enrollments(student_id);
 CREATE INDEX idx_enrollments_course_id ON enrollments(course_id);
 CREATE INDEX idx_enrollments_status ON enrollments(status);
 CREATE INDEX idx_enrollments_semester ON enrollments(semester);
+
+-- A student can retain any number of historical completed/failed attempts,
+-- but can have only one currently planned/active attempt for a course.
+CREATE UNIQUE INDEX uq_enrollments_one_open_attempt
+ON enrollments(student_id, course_id)
+WHERE status IN ('planned', 'active');
 
 CREATE INDEX idx_grades_enrollment_id ON grades(enrollment_id);

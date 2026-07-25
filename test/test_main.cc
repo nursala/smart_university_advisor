@@ -3,12 +3,16 @@
 #include <drogon/drogon.h>
 
 #include <cstdlib>
+#include <limits>
 #include <optional>
 #include <string>
 #include <thread>
 
 #include "../services/JwtService.h"
 #include "../services/AuthorizationService.h"
+#include "../services/AcademicRules.h"
+#include "../services/EnrollmentConfirmationService.h"
+#include "../services/EnrollmentService.h"
 #include "../services/PasswordHasher.h"
 #include "../services/ToolRegistry.h"
 
@@ -116,6 +120,54 @@ DROGON_TEST(AgentToolArgumentsCannotSwitchStudentIdentity)
     const auto scoped = ToolRegistry::scopeArguments(modelArgs, 41);
     CHECK(scoped["student_id"].asInt64() == 41);
     CHECK(scoped["course_id"].asInt64() == 3);
+}
+
+DROGON_TEST(SemesterValidationUsesCanonicalFormat)
+{
+    CHECK(AcademicRules::isValidSemester("2026-Fall") == true);
+    CHECK(AcademicRules::isValidSemester("2026A") == false);
+    CHECK(AcademicRules::isValidSemester("") == false);
+    CHECK(AcademicRules::isValidSemester("2026-fall") == false);
+}
+
+DROGON_TEST(EnrollmentConfirmationIsSingleUseAndIdentityBound)
+{
+    const auto proposal = EnrollmentConfirmationService::propose(
+        7, 41, 3, "2026-Fall");
+    const auto id = proposal["confirmation_id"].asString();
+    std::string error;
+    CHECK(EnrollmentConfirmationService::consume(id, 8, 41, error)
+              .has_value() == false);
+    auto confirmed =
+        EnrollmentConfirmationService::consume(id, 7, 41, error);
+    REQUIRE(confirmed.has_value() == true);
+    CHECK((*confirmed)["course_id"].asInt64() == 3);
+    CHECK(EnrollmentConfirmationService::consume(id, 7, 41, error)
+              .has_value() == false);
+}
+
+DROGON_TEST(EnrollmentServiceRejectsInvalidInputsBeforeDatabaseAccess)
+{
+    bool called = false;
+    ServiceResult result;
+    EnrollmentService::create(
+        nullptr, 1, 1, "2026A",
+        [&called, &result](ServiceResult value) {
+            called = true;
+            result = std::move(value);
+        });
+    CHECK(called == true);
+    CHECK(result.status == ServiceResult::Status::BadRequest);
+
+    called = false;
+    EnrollmentService::recordGrade(
+        nullptr, 1, std::numeric_limits<double>::infinity(),
+        [&called, &result](ServiceResult value) {
+            called = true;
+            result = std::move(value);
+        });
+    CHECK(called == true);
+    CHECK(result.status == ServiceResult::Status::BadRequest);
 }
 
 namespace

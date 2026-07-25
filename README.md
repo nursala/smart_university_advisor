@@ -152,9 +152,42 @@ administrators may work across students, manage enrollments, and record
 official grades. Agent tool arguments are server-scoped, so Gemini cannot
 replace the authorized student identity.
 
+## Academic and enrollment rules
+
+The canonical semester format is `YYYY-Spring`, `YYYY-Summer`, `YYYY-Fall`,
+or `YYYY-Winter`. New enrollments are always created as `planned`.
+
+The application passing grade is **60**. A prerequisite is satisfied only by
+a completed enrollment with a passing grade that also meets that
+prerequisite's configured minimum. Planned, active, and failed attempts do
+not satisfy prerequisites.
+
+A passed course cannot be retaken. Planned or active courses cannot be added
+again in another semester. A failed completed course may be retaken in a
+later semester, while duplicate same-semester attempts remain prohibited.
+Enrollment creation totals planned and active course credits for the target
+semester and rejects additions above `students.max_weekly_credits`.
+
+`current_gpa` is the arithmetic mean of all grades attached to completed
+enrollments, including failed grades, rounded by the database column to two
+decimal places. It is SQL `NULL` when there are no completed graded
+enrollments; a real grade/GPA of zero remains numeric zero. Grade corrections
+and graded-enrollment deletion update GPA atomically with the mutation.
+
+Agent enrollment is a two-step mutation. The first `enroll_in_course` tool
+call returns a five-minute proposal and performs no database write. The
+client must submit its one-time `confirmation_id` to `/agent/query` while
+authenticated as the same user. Confirmation is bound to user, student,
+course, and semester; it cannot be replayed or transferred. The confirmed
+operation then uses the same `EnrollmentService` rules as REST.
+
+The confirmation store is intentionally process-local for this course
+project. Outstanding confirmations are lost on API restart and are not
+shared between multiple API replicas.
+
 ## Agent tools
 
-`POST /agent/query` runs an agentic loop against Gemini with 8 function
+`POST /agent/query` runs an agentic loop against Gemini with 9 function
 tools (declared in
 [`services/ToolRegistry.cc`](services/ToolRegistry.cc)), each backed by the
 same service layer as the REST endpoints above:
@@ -167,3 +200,4 @@ same service layer as the REST endpoints above:
 6. `analyze_academic_risk` — risk analysis for a set of courses
 7. `get_course_details` — full details for a course
 8. `search_courses` — filtered course catalog search
+9. `enroll_in_course` - propose an enrollment for explicit confirmation

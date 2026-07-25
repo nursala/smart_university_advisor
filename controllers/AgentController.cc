@@ -8,6 +8,7 @@
 
 #include "../services/GeminiClient.h"
 #include "../services/AuthorizationService.h"
+#include "../services/EnrollmentConfirmationService.h"
 #include "../services/ToolRegistry.h"
 #include "../services/ValidationHelpers.h"
 
@@ -47,10 +48,12 @@ struct AgentState
 {
     std::shared_ptr<GeminiClient> geminiClient;
     drogon::orm::DbClientPtr database;
+    int64_t userId = 0;
     int64_t studentId = 0;
     std::string message;
     Json::Value contents{Json::arrayValue};
     Json::Value toolsUsed{Json::arrayValue};
+    Json::Value proposedAction;
     int step = 0;
     std::function<void(const drogon::HttpResponsePtr &)> callback;
 };
@@ -84,9 +87,15 @@ void executeFunctionCalls(
         state->database,
         name,
         args,
+        state->userId,
         state->studentId,
         [state, functionCalls, index, responseParts, name](
             Json::Value toolResult) {
+            if (toolResult.isMember("data") &&
+                toolResult["data"].isMember("confirmation_id"))
+            {
+                state->proposedAction = toolResult["data"];
+            }
             Json::Value functionResponse;
             functionResponse["name"] = name;
             functionResponse["response"] = std::move(toolResult);
@@ -140,6 +149,8 @@ void handleGeminiResponse(const std::shared_ptr<AgentState> &state,
         result["message"] = state->message;
         result["answer"] = finalText;
         result["tools_used"] = state->toolsUsed;
+        if (!state->proposedAction.isNull())
+            result["proposed_action"] = state->proposedAction;
         result["status"] = "ok";
         state->callback(drogon::HttpResponse::newHttpJsonResponse(result));
         return;
@@ -216,6 +227,39 @@ void AgentController::query(
     }
 
     const auto message = (*body)["message"].asString();
+    const auto identity = AuthorizationService::identity(request);
+    if (body->isMember("confirmation_id"))
+    {
+        if (!(*body)["confirmation_id"].isString())
+        {
+            callback(errorResponse("confirmation_id must be a string",
+                                   drogon::k400BadRequest));
+            return;
+        }
+        std::string confirmationError;
+        auto confirmedArgs = EnrollmentConfirmationService::consume(
+            (*body)["confirmation_id"].asString(),
+            identity.userId,
+            studentId,
+            confirmationError);
+        if (!confirmedArgs)
+        {
+            callback(errorResponse(confirmationError, drogon::k403Forbidden));
+            return;
+        }
+        ToolRegistry::execute(
+            drogon::app().getDbClient(),
+            "enroll_in_course",
+            *confirmedArgs,
+            [callback](Json::Value result) {
+                auto response =
+                    drogon::HttpResponse::newHttpJsonResponse(result);
+                if (!result["success"].asBool())
+                    response->setStatusCode(drogon::k400BadRequest);
+                callback(response);
+            });
+        return;
+    }
 
     std::shared_ptr<GeminiClient> geminiClient;
     try
@@ -234,6 +278,7 @@ void AgentController::query(
     auto state = std::make_shared<AgentState>();
     state->geminiClient = std::move(geminiClient);
     state->database = drogon::app().getDbClient();
+    state->userId = identity.userId;
     state->studentId = studentId;
     state->message = message;
     state->callback = std::move(callback);

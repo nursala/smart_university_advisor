@@ -7,6 +7,7 @@
 #include "Tool.h"
 #include "ToolResult.h"
 #include "Tools.h"
+#include "EnrollmentConfirmationService.h"
 
 namespace
 {
@@ -92,10 +93,39 @@ void ToolRegistry::executeAuthorized(
     const drogon::orm::DbClientPtr &database,
     const std::string &toolName,
     const Json::Value &args,
+    int64_t authorizedUserId,
     int64_t authorizedStudentId,
     std::function<void(Json::Value)> &&callback)
 {
     auto authorizedArgs = scopeArguments(args, authorizedStudentId);
+    if (toolName == "enroll_in_course")
+    {
+        if (!authorizedArgs.isMember("course_id") ||
+            !authorizedArgs["course_id"].isIntegral() ||
+            !authorizedArgs.isMember("semester") ||
+            !authorizedArgs["semester"].isString())
+        {
+            callback(toolFailure(
+                "course_id and semester are required for enrollment"));
+            return;
+        }
+        try
+        {
+            Json::Value result;
+            result["success"] = true;
+            result["data"] = EnrollmentConfirmationService::propose(
+                authorizedUserId,
+                authorizedStudentId,
+                authorizedArgs["course_id"].asInt64(),
+                authorizedArgs["semester"].asString());
+            callback(std::move(result));
+        }
+        catch (const std::exception &exception)
+        {
+            callback(toolFailure(exception.what()));
+        }
+        return;
+    }
     execute(database, toolName, authorizedArgs, std::move(callback));
 }
 

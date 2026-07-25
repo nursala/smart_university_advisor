@@ -9,7 +9,8 @@
 inline Json::Value toToolResult(const ServiceResult &result)
 {
     Json::Value toolResult;
-    if (result.status == ServiceResult::Status::Ok)
+    if (result.status == ServiceResult::Status::Ok ||
+        result.status == ServiceResult::Status::Created)
     {
         toolResult["success"] = true;
         toolResult["data"] = result.data;
