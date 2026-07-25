@@ -2,7 +2,6 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
 const studentNavItems = [
-  { to: '/dashboard', label: 'Dashboard' },
   { to: '/chat', label: 'AI Advisor' },
   { to: '/courses', label: 'Courses' },
   { to: '/my-plan', label: 'My Plan' },

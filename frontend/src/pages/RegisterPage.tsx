@@ -49,7 +49,7 @@ export default function RegisterPage() {
       const { token, user } =
         await registerRequest(name.trim(), email.trim(), password)
       login(token, user)
-      navigate('/dashboard', { replace: true })
+      navigate('/profile', { replace: true })
     } catch (err) {
       setMessage(
         err instanceof ApiError
