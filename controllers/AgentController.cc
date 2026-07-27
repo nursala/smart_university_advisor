@@ -1,5 +1,7 @@
 #include "AgentController.h"
 
+#include <algorithm>
+#include <cctype>
 #include <memory>
 #include <string>
 #include <vector>
@@ -8,8 +10,6 @@
 
 #include "../services/GeminiClient.h"
 #include "../services/AuthorizationService.h"
-#include "../services/EnrollmentConfirmationService.h"
-#include "../services/EnrollmentService.h"
 #include "../services/ToolRegistry.h"
 #include "../services/ValidationHelpers.h"
 
@@ -18,6 +18,21 @@ namespace
 // Hard cap on Gemini round trips per /agent/query call, so a model stuck
 // in a tool-call loop can never hang a request indefinitely.
 constexpr int kMaxAgentSteps = 6;
+
+bool asksToModifyPlan(std::string message)
+{
+    std::transform(message.begin(), message.end(), message.begin(),
+                   [](unsigned char character) {
+                       return static_cast<char>(std::tolower(character));
+                   });
+    return message.find("enroll me") != std::string::npos ||
+           message.find("enroll in") != std::string::npos ||
+           message.find("add me") != std::string::npos ||
+           message.find("add to my plan") != std::string::npos ||
+           message.find("add it to my plan") != std::string::npos ||
+           message.find("remove from my plan") != std::string::npos ||
+           message.find("remove it from my plan") != std::string::npos;
+}
 
 drogon::HttpResponsePtr errorResponse(const std::string &message,
                                       drogon::HttpStatusCode statusCode)
@@ -54,7 +69,6 @@ struct AgentState
     std::string message;
     Json::Value contents{Json::arrayValue};
     Json::Value toolsUsed{Json::arrayValue};
-    Json::Value proposedAction;
     int step = 0;
     std::function<void(const drogon::HttpResponsePtr &)> callback;
 };
@@ -92,12 +106,6 @@ void executeFunctionCalls(
         state->studentId,
         [state, functionCalls, index, responseParts, name](
             Json::Value toolResult) {
-            if (toolResult.isMember("data") &&
-                toolResult["data"].isObject() &&
-                toolResult["data"].isMember("confirmation_id"))
-            {
-                state->proposedAction = toolResult["data"];
-            }
             Json::Value functionResponse;
             functionResponse["name"] = name;
             functionResponse["response"] = std::move(toolResult);
@@ -151,8 +159,6 @@ void handleGeminiResponse(const std::shared_ptr<AgentState> &state,
         result["message"] = state->message;
         result["answer"] = finalText;
         result["tools_used"] = state->toolsUsed;
-        if (!state->proposedAction.isNull())
-            result["proposed_action"] = state->proposedAction;
         result["status"] = "ok";
         state->callback(drogon::HttpResponse::newHttpJsonResponse(result));
         return;
@@ -230,56 +236,17 @@ void AgentController::query(
 
     const auto message = (*body)["message"].asString();
     const auto identity = AuthorizationService::identity(request);
-    if (body->isMember("confirmation_id"))
+    if (asksToModifyPlan(message))
     {
-        if (!(*body)["confirmation_id"].isString())
-        {
-            callback(errorResponse("confirmation_id must be a string",
-                                   drogon::k400BadRequest));
-            return;
-        }
-        std::string confirmationError;
-        const auto confirmationId = (*body)["confirmation_id"].asString();
-        auto confirmedArgs = EnrollmentConfirmationService::acquire(
-            confirmationId,
-            identity.userId,
-            studentId,
-            confirmationError);
-        if (!confirmedArgs)
-        {
-            callback(errorResponse(confirmationError, drogon::k403Forbidden));
-            return;
-        }
-        EnrollmentService::create(
-            drogon::app().getDbClient(),
-            (*confirmedArgs)["student_id"].asInt64(),
-            (*confirmedArgs)["course_id"].asInt64(),
-            (*confirmedArgs)["semester"].asString(),
-            [callback, confirmationId](ServiceResult result) {
-                const bool internalFailure =
-                    result.status == ServiceResult::Status::Error;
-                EnrollmentConfirmationService::finalize(
-                    confirmationId, internalFailure);
-                Json::Value responseBody;
-                if (result.status == ServiceResult::Status::Created)
-                {
-                    responseBody["success"] = true;
-                    responseBody["data"] = std::move(result.data);
-                }
-                else
-                {
-                    responseBody["success"] = false;
-                    responseBody["error"] = result.message;
-                }
-                auto response =
-                    drogon::HttpResponse::newHttpJsonResponse(responseBody);
-                if (internalFailure)
-                    response->setStatusCode(
-                        drogon::k500InternalServerError);
-                else if (result.status != ServiceResult::Status::Created)
-                    response->setStatusCode(drogon::k400BadRequest);
-                callback(response);
-            });
+        Json::Value responseBody;
+        responseBody["student_id"] = Json::Int64(studentId);
+        responseBody["message"] = message;
+        responseBody["answer"] =
+            "I cannot modify academic records. Please add or remove the "
+            "eligible course yourself from the My Plan page.";
+        responseBody["tools_used"] = Json::Value(Json::arrayValue);
+        responseBody["status"] = "ok";
+        callback(drogon::HttpResponse::newHttpJsonResponse(responseBody));
         return;
     }
 
@@ -312,7 +279,12 @@ void AgentController::query(
         ". Always pass student_id=" + std::to_string(studentId) +
         " when calling tools that require a student_id. Use the available "
         "tools as needed to answer accurately, then give a clear, concise "
-        "final answer in plain text.\n\nStudent's question: " + message;
+        "final answer in plain text. You are strictly read-only: never claim "
+        "to add, remove, or change an enrollment. If the student asks you to "
+        "enroll, add, remove, or otherwise modify their plan, explain that "
+        "you cannot modify academic records and direct them to the My Plan "
+        "page, where they must perform the final action themselves.\n\n"
+        "Student's question: " + message;
     Json::Value parts(Json::arrayValue);
     parts.append(std::move(textPart));
     Json::Value userTurn;

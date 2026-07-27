@@ -1,7 +1,7 @@
 import type { FormEvent, KeyboardEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { confirmEnrollment, queryAgent } from '../services/agentApi'
+import { queryAgent } from '../services/agentApi'
 import { useChat } from '../chat/ChatContext'
 import EmptyState from '../components/EmptyState'
 
@@ -37,8 +37,6 @@ export default function ChatPage() {
         content: response.answer ?? response.message ?? fallbackError,
         status: response.status,
         toolsUsed: response.tools_used,
-        pendingAction: response.proposed_action,
-        actionState: response.proposed_action ? 'pending' : undefined,
       }])
     } catch (error) {
       const message = error instanceof Error ? error.message : fallbackError
@@ -51,26 +49,6 @@ export default function ChatPage() {
       }])
     } finally {
       setIsSending(false)
-    }
-  }
-
-  function updateAction(messageId: number, update: object) {
-    setMessages((current) => current.map((message) =>
-      message.id === messageId ? { ...message, ...update } : message,
-    ))
-  }
-
-  async function confirm(messageId: number, confirmationId: string) {
-    updateAction(messageId, { actionState: 'confirming', actionError: undefined })
-    try {
-      await confirmEnrollment(confirmationId)
-      updateAction(messageId, { actionState: 'confirmed' })
-      window.dispatchEvent(new Event('sua:plan-changed'))
-    } catch (error) {
-      updateAction(messageId, {
-        actionState: 'failed',
-        actionError: error instanceof Error ? error.message : 'Unable to confirm enrollment.',
-      })
     }
   }
 
@@ -89,7 +67,10 @@ export default function ChatPage() {
     <section className="chat-panel" aria-labelledby="page-title">
       <header className="chat-header">
         <h1 id="page-title">AI Advisor</h1>
-        <p>Ask about courses, semester planning, recommendations, and academic risk.</p>
+        <p>
+          Get read-only recommendations and semester-plan previews. Add or remove
+          official planned courses yourself from My Plan.
+        </p>
       </header>
       <form className="chat-form" onSubmit={submit}>
         <section className="conversation" aria-label="Conversation with advisor">
@@ -98,28 +79,6 @@ export default function ChatPage() {
               <p className="message-label">{message.role === 'assistant' ? 'Advisor' : 'You'}</p>
               <p className="message-content">{message.content}</p>
               {message.toolsUsed?.length ? <p className="message-status">Tools: {message.toolsUsed.join(', ')}</p> : null}
-              {message.pendingAction && (
-                <section className="confirmation-card" aria-label="Pending enrollment confirmation">
-                  <h3>Confirm planned enrollment</h3>
-                  <p>{message.pendingAction.course_code} · {message.pendingAction.course_name}</p>
-                  <p>Semester: {message.pendingAction.semester}</p>
-                  <p>Expires in about {Math.ceil(message.pendingAction.expires_in_seconds / 60)} minutes.</p>
-                  {message.actionError && <p className="form-error" role="alert">{message.actionError}</p>}
-                  {message.actionState === 'confirmed' && <p>Enrollment confirmed. My Plan has been refreshed.</p>}
-                  {message.actionState === 'cancelled' && <p>Proposal cancelled. No enrollment was created.</p>}
-                  {(message.actionState === 'pending' || message.actionState === 'failed') && (
-                    <div className="actions">
-                      <button type="button" onClick={() => confirm(message.id, message.pendingAction!.confirmation_id)}>
-                        Confirm enrollment
-                      </button>
-                      <button type="button" className="secondary-button" onClick={() => updateAction(message.id, { actionState: 'cancelled', actionError: undefined })}>
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                  {message.actionState === 'confirming' && <p>Confirming...</p>}
-                </section>
-              )}
             </article>
           ))}
           <div ref={endRef} aria-hidden="true" />

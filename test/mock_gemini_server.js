@@ -50,8 +50,6 @@ const server = http.createServer((req, res) => {
 
         setTimeout(() => {
             const firstText = parsed?.contents?.[0]?.parts?.[0]?.text || '';
-            const hasToolResponse = (parsed?.contents || []).some((turn) =>
-                (turn?.parts || []).some((part) => part?.functionResponse));
             const toolResponses = (parsed?.contents || []).flatMap((turn) =>
                 (turn?.parts || []).filter((part) => part?.functionResponse));
             let parts;
@@ -69,18 +67,8 @@ const server = http.createServer((req, res) => {
             }
             else
             {
-                parts =
-                firstText.includes('enroll-test') && !hasToolResponse
-                    ? [{
-                        functionCall: {
-                            name: 'enroll_in_course',
-                            args: {
-                                student_id: 999999,
-                                course_id: 1,
-                                semester: '2028-Fall',
-                            },
-                        },
-                    }]
+                parts = firstText.includes('enroll-test')
+                    ? [{ text: 'I cannot modify academic records. Add the eligible course manually from the My Plan page.' }]
                     : [{ text: `Echo: ${studentId}` }];
             }
             const response = {

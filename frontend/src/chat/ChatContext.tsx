@@ -1,6 +1,5 @@
 import { createContext, useContext, useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import type { PendingEnrollmentAction } from '../types/agent'
 
 export type ChatMessage = {
   id: number
@@ -8,9 +7,6 @@ export type ChatMessage = {
   content: string
   status?: string
   toolsUsed?: string[]
-  pendingAction?: PendingEnrollmentAction
-  actionState?: 'pending' | 'confirming' | 'confirmed' | 'cancelled' | 'failed'
-  actionError?: string
 }
 
 const ChatContext = createContext<{
@@ -22,7 +18,7 @@ const ChatContext = createContext<{
 const initialMessages: ChatMessage[] = [{
   id: 1,
   role: 'assistant',
-  content: 'Hello! How can I help with your academic planning?',
+  content: 'I provide read-only recommendations and semester-plan previews. To add or remove an official planned course, use the My Plan page.',
 }]
 
 export function ChatProvider({ children }: { children: ReactNode }) {

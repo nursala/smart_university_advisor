@@ -2,16 +2,17 @@
 #include <drogon/drogon_test.h>
 #include <drogon/drogon.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <limits>
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "../services/JwtService.h"
 #include "../services/AuthorizationService.h"
 #include "../services/AcademicRules.h"
-#include "../services/EnrollmentConfirmationService.h"
 #include "../services/EnrollmentService.h"
 #include "../services/PasswordHasher.h"
 #include "../services/ToolRegistry.h"
@@ -122,31 +123,35 @@ DROGON_TEST(AgentToolArgumentsCannotSwitchStudentIdentity)
     CHECK(scoped["course_id"].asInt64() == 3);
 }
 
+DROGON_TEST(ToolRegistryContainsExactlyEightReadOnlyTools)
+{
+    const auto declarations = ToolRegistry::toolDeclarations();
+    REQUIRE(declarations.isArray());
+    CHECK(declarations.size() == 8);
+
+    const std::vector<std::string> expected{
+        "get_student_profile",
+        "get_academic_summary",
+        "get_available_courses",
+        "get_course_recommendations",
+        "build_semester_plan",
+        "analyze_academic_risk",
+        "get_course_details",
+        "search_courses"};
+    std::vector<std::string> actual;
+    for (const auto &declaration : declarations)
+        actual.push_back(declaration["name"].asString());
+    CHECK(actual == expected);
+    CHECK(std::find(actual.begin(), actual.end(), "enroll_in_course") ==
+          actual.end());
+}
+
 DROGON_TEST(SemesterValidationUsesCanonicalFormat)
 {
     CHECK(AcademicRules::isValidSemester("2026-Fall") == true);
     CHECK(AcademicRules::isValidSemester("2026A") == false);
     CHECK(AcademicRules::isValidSemester("") == false);
     CHECK(AcademicRules::isValidSemester("2026-fall") == false);
-}
-
-DROGON_TEST(EnrollmentConfirmationIsSingleUseAndIdentityBound)
-{
-    const auto proposal = EnrollmentConfirmationService::propose(
-        7, 41, 3, "2026-Fall", "CS301", "Algorithms");
-    CHECK(proposal["course_code"].asString() == "CS301");
-    CHECK(proposal["course_name"].asString() == "Algorithms");
-    CHECK(proposal["expires_in_seconds"].asInt() == 300);
-    const auto id = proposal["confirmation_id"].asString();
-    std::string error;
-    CHECK(EnrollmentConfirmationService::consume(id, 8, 41, error)
-              .has_value() == false);
-    auto confirmed =
-        EnrollmentConfirmationService::consume(id, 7, 41, error);
-    REQUIRE(confirmed.has_value() == true);
-    CHECK((*confirmed)["course_id"].asInt64() == 3);
-    CHECK(EnrollmentConfirmationService::consume(id, 7, 41, error)
-              .has_value() == false);
 }
 
 DROGON_TEST(EnrollmentServiceRejectsInvalidInputsBeforeDatabaseAccess)
@@ -171,24 +176,6 @@ DROGON_TEST(EnrollmentServiceRejectsInvalidInputsBeforeDatabaseAccess)
         });
     CHECK(called == true);
     CHECK(result.status == ServiceResult::Status::BadRequest);
-}
-
-DROGON_TEST(EnrollmentConfirmationCanRetryAfterInternalFailure)
-{
-    const auto proposal = EnrollmentConfirmationService::propose(
-        9, 42, 4, "2027-Spring", "CS102", "Programming II");
-    const auto id = proposal["confirmation_id"].asString();
-    std::string error;
-    CHECK(EnrollmentConfirmationService::acquire(id, 9, 42, error)
-              .has_value());
-    CHECK(EnrollmentConfirmationService::acquire(id, 9, 42, error)
-              .has_value() == false);
-    EnrollmentConfirmationService::finalize(id, true);
-    CHECK(EnrollmentConfirmationService::acquire(id, 9, 42, error)
-              .has_value());
-    EnrollmentConfirmationService::finalize(id, false);
-    CHECK(EnrollmentConfirmationService::acquire(id, 9, 42, error)
-              .has_value() == false);
 }
 
 namespace

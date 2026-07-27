@@ -138,12 +138,9 @@ to the role-appropriate landing page. Profile editing is limited to the name
 and email fields supported by `/users/me`; academic history, GPA, and grades
 are not editable by students.
 
-The confirmation card submits the exact server-issued `confirmation_id`.
-Cancel is UI-only and performs no mutation. Proposals expire after five
-minutes, and an API restart invalidates them because the confirmation store
-is process-local. Displayed chat messages survive React route navigation but
-are intentionally cleared by a full page refresh or logout. They remain only
-in React memory, and Gemini receives only the latest submitted message.
+Displayed chat messages survive React route navigation but are intentionally
+cleared by a full page refresh or logout. They remain only in React memory,
+and Gemini receives only the latest submitted message.
 
 Passwords are hashed with PBKDF2-HMAC-SHA256 (`services/PasswordHasher.cc`),
 not bcrypt -- chosen to avoid a new system dependency, since OpenSSL is
@@ -200,25 +197,17 @@ decimal places. It is SQL `NULL` when there are no completed graded
 enrollments; a real grade/GPA of zero remains numeric zero. Grade corrections
 and graded-enrollment deletion update GPA atomically with the mutation.
 
-Agent enrollment is a two-step mutation. The first `enroll_in_course` tool
-call returns a five-minute proposal and performs no database write. The
-client must submit its one-time `confirmation_id` to `/agent/query` while
-authenticated as the same user. Confirmation is bound to user, student,
-course, and semester; it cannot be replayed or transferred. The confirmed
-operation then uses the same `EnrollmentService` rules as REST.
+Students add and remove planned courses manually from My Plan. The frontend
+sends only `course_id` and a canonical `semester`; the JWT supplies the
+student identity, and `EnrollmentService` enforces all academic rules.
 
-The confirmation store is intentionally process-local for this course
-project. Outstanding confirmations are lost on API restart and are not
-shared between multiple API replicas.
-
-Confirmation is guarded in-flight before enrollment execution. Successful
-creation and academic-rule rejection consume the proposal; an internal
-database/service failure releases the guard so an unexpired proposal can be
-retried without allowing concurrent replay.
+Course enrollment is intentionally user-controlled because it changes academic
+records. The AI recommends and previews plans, while the student performs the
+final addition through My Plan.
 
 ## Agent tools
 
-`POST /agent/query` runs an agentic loop against Gemini with 9 function
+`POST /agent/query` runs a read-only agentic loop against Gemini with 8 function
 tools (declared in
 [`services/ToolRegistry.cc`](services/ToolRegistry.cc)), each backed by the
 same service layer as the REST endpoints above:
@@ -231,7 +220,6 @@ same service layer as the REST endpoints above:
 6. `analyze_academic_risk` — risk analysis for a set of courses
 7. `get_course_details` — full details for a course
 8. `search_courses` — filtered course catalog search
-9. `enroll_in_course` - propose an enrollment for explicit confirmation
 
 Sanitized live Gemini and deterministic mocked regression transcripts are in
 [`docs/agent-demo.md`](docs/agent-demo.md). Each transcript is explicitly
@@ -244,11 +232,11 @@ labeled so mocked output cannot be mistaken for live evidence.
 | 10+ Drogon endpoints | 17 routes in controller headers and the endpoint table above |
 | PostgreSQL with 5+ related tables | 7 tables and 7 FKs in [`database/schema.sql`](database/schema.sql) |
 | ERD/schema documentation | Mermaid ERD above |
-| 8+ function tools | 9 declarations in [`services/ToolRegistry.cc`](services/ToolRegistry.cc) |
+| 8+ function tools | 8 read/analysis declarations in [`services/ToolRegistry.cc`](services/ToolRegistry.cc) |
 | Gemini free API integration | Live `gemini-3.1-flash-lite` evidence in [`docs/agent-demo.md`](docs/agent-demo.md) |
 | Real agentic loop | Six-step-capped loop in [`controllers/AgentController.cc`](controllers/AgentController.cc) |
 | Demonstrated 3+ tool chain | Four-tool sanitized live transcript in [`docs/agent-demo.md`](docs/agent-demo.md) |
-| Agent database operation | Confirmed enrollment through `enroll_in_course`, documented in [`docs/agent-demo.md`](docs/agent-demo.md) |
+| Agent database operation | Intentionally not implemented: AI is read-only; authenticated students mutate planned records manually through My Plan |
 | User management | Register/login/profile routes and PBKDF2/JWT services |
 | Docker Compose | [`docker-compose.yml`](docker-compose.yml) |
 | React TypeScript UI | [`frontend/src/App.tsx`](frontend/src/App.tsx) |
@@ -256,13 +244,11 @@ labeled so mocked output cannot be mistaken for live evidence.
 
 ## Known limitations
 
-- Enrollment confirmations are process-local and disappear on API restart.
 - Chat history survives client-side navigation but not a full page refresh.
 - Browser-tab authentication uses `sessionStorage`; closing the tab ends the
   browser session after the browser discards that storage.
 - There is no staff administration portal; staff navigation is intentionally
   limited.
-- SSE, persistent conversational memory, and multi-replica confirmation
-  storage are not implemented.
+- SSE and persistent conversational memory are not implemented.
 - Live Gemini requires a locally configured API key; secrets are never stored
   in the repository.

@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-// The 9 function tools exposed to the Gemini agentic loop. Each tool
+// The 8 read/analysis function tools exposed to the Gemini agentic loop. Each tool
 // wraps the SAME service-layer logic already used by the corresponding
 // REST endpoint (StudentService / CourseService) -- no DB query or
 // business rule is reimplemented here.

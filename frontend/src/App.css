@@ -228,6 +228,12 @@ button:disabled {
   overflow: hidden;
 }
 
+.success-message {
+  margin: 0;
+  color: var(--success-text);
+  font-weight: 600;
+}
+
 .app-layout-chat {
   height: 100vh;
   min-height: 0;
@@ -766,19 +772,14 @@ button:disabled {
   gap: 10px;
 }
 
-.confirmation-card {
+.plan-form {
   display: grid;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  gap: 14px;
 }
 
-.confirmation-card h3,
-.confirmation-card p {
-  margin: 0;
+.plan-form .form-field {
+  display: grid;
+  gap: 6px;
 }
 
 .profile-edit {

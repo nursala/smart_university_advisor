@@ -7,8 +7,6 @@
 #include "Tool.h"
 #include "ToolResult.h"
 #include "Tools.h"
-#include "EnrollmentConfirmationService.h"
-#include "AcademicRules.h"
 
 namespace
 {
@@ -23,7 +21,6 @@ std::vector<std::unique_ptr<Tool>> buildTools()
     tools.push_back(std::make_unique<AnalyzeAcademicRiskTool>());
     tools.push_back(std::make_unique<GetCourseDetailsTool>());
     tools.push_back(std::make_unique<SearchCoursesTool>());
-    tools.push_back(std::make_unique<EnrollInCourseTool>());
     return tools;
 }
 
@@ -98,63 +95,11 @@ void ToolRegistry::executeAuthorized(
     int64_t authorizedStudentId,
     std::function<void(Json::Value)> &&callback)
 {
-    auto authorizedArgs = scopeArguments(args, authorizedStudentId);
-    if (toolName == "enroll_in_course")
-    {
-        if (!authorizedArgs.isMember("course_id") ||
-            !authorizedArgs["course_id"].isIntegral() ||
-            !authorizedArgs.isMember("semester") ||
-            !authorizedArgs["semester"].isString())
-        {
-            callback(toolFailure(
-                "course_id and semester are required for enrollment"));
-            return;
-        }
-        const auto courseId = authorizedArgs["course_id"].asInt64();
-        const auto semester = authorizedArgs["semester"].asString();
-        if (courseId <= 0)
-        {
-            callback(toolFailure("course_id must be a positive integer"));
-            return;
-        }
-        if (!AcademicRules::isValidSemester(semester))
-        {
-            callback(toolFailure(std::string("semester must use format ") +
-                                 AcademicRules::semesterFormat()));
-            return;
-        }
-        database->execSqlAsync(
-            "SELECT code,name FROM courses WHERE id=$1",
-            [callback, authorizedUserId, authorizedStudentId, courseId,
-             semester](const drogon::orm::Result &rows) {
-                if (rows.empty())
-                {
-                    callback(toolFailure("Course not found"));
-                    return;
-                }
-                try
-                {
-                    Json::Value result;
-                    result["success"] = true;
-                    result["data"] = EnrollmentConfirmationService::propose(
-                        authorizedUserId, authorizedStudentId, courseId,
-                        semester,
-                        rows.front()["code"].as<std::string>(),
-                        rows.front()["name"].as<std::string>());
-                    callback(std::move(result));
-                }
-                catch (const std::exception &exception)
-                {
-                    callback(toolFailure(exception.what()));
-                }
-            },
-            [callback](const drogon::orm::DrogonDbException &) {
-                callback(toolFailure("Unable to load course"));
-            },
-            courseId);
-        return;
-    }
-    execute(database, toolName, authorizedArgs, std::move(callback));
+    (void)authorizedUserId;
+    execute(database,
+            toolName,
+            scopeArguments(args, authorizedStudentId),
+            std::move(callback));
 }
 
 Json::Value ToolRegistry::scopeArguments(const Json::Value &args,
@@ -162,8 +107,7 @@ Json::Value ToolRegistry::scopeArguments(const Json::Value &args,
 {
     Json::Value authorizedArgs =
         args.isObject() ? args : Json::Value(Json::objectValue);
-    // Harmless for catalog-only tools; decisive for every student-scoped
-    // tool, including enroll_in_course.
+    // Harmless for catalog-only tools; decisive for every student-scoped tool.
     authorizedArgs["student_id"] = Json::Int64(authorizedStudentId);
     return authorizedArgs;
 }
