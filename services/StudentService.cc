@@ -135,21 +135,15 @@ void StudentService::getAcademicSummary(
     std::function<void(ServiceResult)> &&callback)
 {
     database->execSqlAsync(
-        "SELECT s.current_gpa, "
-        "COUNT(e.id) FILTER (WHERE e.status = 'completed' "
-        "AND g.passed = TRUE) AS completed_courses_count, "
-        "COUNT(e.id) FILTER (WHERE e.status = 'active') "
-        "AS active_courses_count, "
-        "COUNT(e.id) FILTER (WHERE e.status = 'completed' "
-        "AND g.passed = FALSE) AS failed_courses_count, "
-        "COALESCE(SUM(c.credits) FILTER (WHERE e.status = 'completed' "
-        "AND g.passed = TRUE), 0) AS completed_credits "
+        "SELECT s.current_gpa, e.id AS enrollment_id, e.course_id, "
+        "c.code AS course_code, c.name AS course_name, e.semester, "
+        "c.credits, e.status, g.grade, g.passed "
         "FROM students s "
         "LEFT JOIN enrollments e ON e.student_id = s.id "
         "LEFT JOIN grades g ON g.enrollment_id = e.id "
         "LEFT JOIN courses c ON c.id = e.course_id "
         "WHERE s.id = $1 "
-        "GROUP BY s.id, s.current_gpa",
+        "ORDER BY e.id",
         [callback](const drogon::orm::Result &result) {
             if (result.empty())
             {
@@ -157,23 +151,86 @@ void StudentService::getAcademicSummary(
                 return;
             }
 
-            const auto &row = result.front();
             Json::Value summary;
-            summary["current_gpa"] = row["current_gpa"].isNull()
+            summary["current_gpa"] = result.front()["current_gpa"].isNull()
                                          ? Json::Value(Json::nullValue)
                                          : Json::Value(
                                                std::round(
-                                                   row["current_gpa"].as<double>() *
+                                                   result.front()["current_gpa"]
+                                                       .as<double>() *
                                                    100.0) /
                                                100.0);
-            summary["completed_courses_count"] = Json::Int64(
-                row["completed_courses_count"].as<int64_t>());
-            summary["active_courses_count"] =
-                Json::Int64(row["active_courses_count"].as<int64_t>());
-            summary["failed_courses_count"] =
-                Json::Int64(row["failed_courses_count"].as<int64_t>());
-            summary["completed_credits"] =
-                Json::Int64(row["completed_credits"].as<int64_t>());
+            Json::Value completed(Json::arrayValue);
+            Json::Value active(Json::arrayValue);
+            Json::Value planned(Json::arrayValue);
+            int64_t completedCount = 0;
+            int64_t activeCount = 0;
+            int64_t plannedCount = 0;
+            int64_t failedCount = 0;
+            int64_t completedCredits = 0;
+
+            for (const auto &row : result)
+            {
+                if (row["enrollment_id"].isNull())
+                    continue;
+
+                Json::Value course;
+                course["enrollment_id"] =
+                    Json::Int64(row["enrollment_id"].as<int64_t>());
+                course["course_id"] =
+                    Json::Int64(row["course_id"].as<int64_t>());
+                course["course_code"] =
+                    row["course_code"].as<std::string>();
+                course["course_name"] =
+                    row["course_name"].as<std::string>();
+                course["semester"] = row["semester"].as<std::string>();
+                course["credits"] = row["credits"].as<int>();
+                const auto status = row["status"].as<std::string>();
+                course["status"] = status;
+
+                if (status == "planned")
+                {
+                    ++plannedCount;
+                    planned.append(std::move(course));
+                }
+                else if (status == "active")
+                {
+                    ++activeCount;
+                    active.append(std::move(course));
+                }
+                else if (status == "completed")
+                {
+                    course["grade"] = row["grade"].isNull()
+                                          ? Json::Value(Json::nullValue)
+                                          : Json::Value(
+                                                row["grade"].as<double>());
+                    course["passed"] = row["passed"].isNull()
+                                           ? Json::Value(Json::nullValue)
+                                           : Json::Value(
+                                                 row["passed"].as<bool>());
+                    if (!row["passed"].isNull() &&
+                        row["passed"].as<bool>())
+                    {
+                        ++completedCount;
+                        completedCredits += row["credits"].as<int64_t>();
+                    }
+                    else if (!row["passed"].isNull())
+                    {
+                        ++failedCount;
+                    }
+                    completed.append(std::move(course));
+                }
+            }
+
+            summary["completed_courses_count"] =
+                Json::Int64(completedCount);
+            summary["active_courses_count"] = Json::Int64(activeCount);
+            summary["planned_courses_count"] = Json::Int64(plannedCount);
+            summary["failed_courses_count"] = Json::Int64(failedCount);
+            summary["completed_credits"] = Json::Int64(completedCredits);
+            summary["completed_courses"] = std::move(completed);
+            summary["active_courses"] = std::move(active);
+            summary["planned_courses"] = std::move(planned);
             callback(ServiceResult::ok(std::move(summary)));
         },
         [callback](const drogon::orm::DrogonDbException &exception) {

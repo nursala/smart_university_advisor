@@ -1,60 +1,81 @@
-# Auth module tests
+# Authentication tests
 
-This documents how to run the tests for the auth module (`AuthController`,
-`UsersController`, `JwtAuthFilter`, `PasswordHasher`, `JwtService`,
-`UserService`, `Base64`), and the real output from the actual runs used to
-verify it (not hypothetical expected output).
+This document covers the current authentication-related unit tests and the
+manual HTTP exercise in `docs/auth-tests.sh`.
 
-## Unit tests (no server/DB needed)
+## C++ test suite
 
-`test/test_main.cc` adds 6 `DROGON_TEST` cases covering `PasswordHasher` and
-`JwtService` in isolation (salting, verify success/failure on wrong password
-and garbage input, issue/verify round-trip, signature tamper detection,
-expiry, and the missing-`JWT_SECRET` constructor failure). Run them inside
-the built `api` container:
+Run the complete suite inside the built API container:
 
 ```sh
 docker compose up --build -d
-docker compose exec api sh -c "cd /app/build/test && ./smart_university_advisor_test"
+docker compose exec -T api sh -c \
+  "cd /app/build/test && ./smart_university_advisor_test"
 ```
 
-Real output:
+Current verified output:
 
-```
+```text
 ================================================================================
-  All tests passed (18 assertions in 8 tests cases).
+All tests passed (44 assertions in 17 test cases).
 ```
 
-(8 cases = the 2 pre-existing cases + the 6 new ones above.)
+Result: **17 test cases, 44 assertions, 0 failures**.
 
-## Integration tests (real HTTP calls against the running stack)
+The suite includes password hashing and verification, the seeded demo password
+hash, student/staff authorization rules, JWT issue/verify and rejection cases,
+Agent student-identity scoping, exact eight-tool registration, semester
+validation, and invalid enrollment/grade input handling.
 
-With the stack up (`docker compose up -d`), the auth endpoints were exercised
-end-to-end with real `curl` calls against `http://localhost:8080`. Summary of
-what was verified (see the PR/audit notes for the full request/response
-transcript of each case):
+## Manual HTTP authentication exercise
 
-| Case | Result |
-| --- | --- |
-| `POST /auth/register`, new email | `201`, body has top-level `token` and nested `user` with `student_id` |
-| `POST /auth/register`, same email again | `400`, `"An account with this email already exists"` |
-| `POST /auth/register`, missing password | `400` |
-| `POST /auth/register`, 7-character password | `400` |
-| `POST /auth/login`, correct password | `200`, same `{ token, user }` contract with linked `student_id` |
-| `POST /auth/login`, wrong password | `400`, `"Invalid email or password"` |
-| `POST /auth/login`, unregistered email | `400`, **same** `"Invalid email or password"` message (no user-enumeration leak) |
-| `GET /users/me`, no `Authorization` header | `401` |
-| `GET /users/me`, malformed header (`Authorization: garbage`) | `401` |
-| `GET /users/me`, valid token | `200`, `id`/`email` match the registered account |
-| `GET /users/me`, token with last character altered | `401` |
-| `PATCH /users/me`, `{"name": "..."}` only | `200`, name updated, email unchanged (confirmed via follow-up `GET`) |
-| `PATCH /users/me`, email already used by a different user | `400` |
-| `PATCH /users/me`, empty body `{}` | `400` |
-| 10 concurrent `POST /auth/register`, identical email | exactly one `201`, nine `400`s, no `500`s |
-
-Reproduce with:
+With the stack running, execute:
 
 ```sh
-docker compose up --build -d
-bash docs/auth-tests.sh   # prints the real request/response for every case above
+bash docs/auth-tests.sh
 ```
+
+This is a manual HTTP exercise rather than an additional Drogon test-case
+count. It covers:
+
+| Case | Current route and expected behavior |
+|---|---|
+| Register | `POST /auth/register` returns `201` with `{ "token", "user" }` and linked `user.student_id` |
+| Duplicate registration | `POST /auth/register` returns `400` |
+| Invalid registration | Missing or short passwords return `400` |
+| Login | `POST /auth/login` returns `200` with the same `{ "token", "user" }` contract |
+| Invalid login | Wrong-password and unknown-email requests return the same error |
+| Missing/malformed authentication | Protected `GET /users/me` returns `401` |
+| Authenticated profile | `GET /users/me` includes `Authorization: Bearer <token>` and returns `200` |
+| Tampered token | Protected `GET /users/me` returns `401` |
+| Profile update | Protected `PATCH /users/me` includes the Bearer token |
+| Duplicate email update | Protected `PATCH /users/me` returns `400` |
+| Empty update | Protected `PATCH /users/me` returns `400` |
+| Registration race | Ten concurrent public registrations produce one successful account |
+
+`POST /auth/register` and `POST /auth/login` are public routes. Every successful
+protected request in the script supplies the JWT using:
+
+```sh
+-H "Authorization: Bearer $TOKEN"
+```
+
+The script creates temporary development accounts and removes them from the
+local Compose database at the end.
+
+## Current Agent and enrollment boundary
+
+Gemini exposes exactly eight read-only tools. It can read academic information,
+recommend courses, analyze risk, and preview semester plans, but it does not
+mutate enrollments.
+
+Students add planned courses manually in My Plan. The frontend sends only
+`course_id` and a semester in one of these canonical forms:
+
+- `YYYY-Spring`
+- `YYYY-Summer`
+- `YYYY-Fall`
+- `YYYY-Winter`
+
+`POST /enrollments` is protected by JWT authentication and derives the student
+identity from the authenticated account.

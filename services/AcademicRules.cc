@@ -5,7 +5,7 @@
 bool AcademicRules::isValidSemester(const std::string &semester)
 {
     static const std::regex pattern(
-        R"(^[0-9]{4}-(Spring|Summer|Fall|Winter)$)");
+        R"(^(20[0-9]{2}|2100)-(Spring|Summer|Fall|Winter)$)");
     return semester.size() <= 30 && std::regex_match(semester, pattern);
 }
 

@@ -1,212 +1,170 @@
 # Concurrency test
 
-This documents real load tests run against the rebuilt, multi-threaded stack
-(not hypothetical/"provably safe" reasoning). All commands and output below
-are copied verbatim from the actual test run.
+This document provides reproducible concurrency checks for the current
+authenticated API. Run the commands from the repository root in a POSIX shell
+with Docker, `curl`, Node.js, and `jq` available.
 
-## Config under test
+The application uses four Drogon I/O threads by default, and the database pool
+size is configurable through `DB_POOL_SIZE`.
 
-- `config.json`: `number_of_threads: 4` (was `1`)
-- `main.cc`: DB connection-pool size is now `DB_POOL_SIZE` (env, default `4`,
-  matching the thread count) instead of a hardcoded `2`
-- `docker-compose.yml`'s `api` service passes through `DB_POOL_SIZE` and
-  `GEMINI_API_HOST` (both additive, both defaulted to unchanged behavior)
+## Setup: isolated student identity
 
-## Why a mock Gemini server
-
-No real `GEMINI_API_KEY` is configured in this environment (`.env.example`
-ships it empty, and no `.env` file exists in the repo). `GeminiClient`'s
-constructor throws immediately without one (`services/GeminiClient.cc`), so
-a real end-to-end `/agent/query` call against the actual Gemini API isn't
-possible here. To still genuinely load-test `/agent/query`'s per-request
-state isolation under real parallelism (not skip the test), `GeminiClient`
-gained a `GEMINI_API_HOST` env override (default: the real Gemini host, so
-production behavior is unchanged — see `services/GeminiClient.h/.cc`) and
-`test/mock_gemini_server.js` stands in for Gemini's `generateContent`
-endpoint: it parses the `student_id` embedded in `AgentController`'s prompt
-text and echoes it back as the model's final answer (no tool calls), so
-each request completes in one real round trip through the actual
-4-IO-thread Drogon server and the actual `shared_ptr<AgentState>` per-request
-plumbing — only the Gemini call itself is faked. This substitution is
-reported explicitly, per the same posture as Batch 1's Gemini-path
-substitution in `test/test_main.cc`.
-
-## Test 1: Enrollment uniqueness race (25 concurrent identical `POST /enrollments`)
-
-Command:
+Start the stack, register a temporary student, and extract the JWT-owned
+identity without printing the token:
 
 ```sh
-mkdir -p /tmp/enroll_race
+docker compose up --build -d
+
+BASE_URL=http://localhost:8080
+AUDIT_EMAIL="concurrency.$(date +%s)@example.com"
+AUDIT_PASSWORD="concurrency-test-password"
+
+AUTH_JSON=$(curl -fsS -X POST "$BASE_URL/auth/register" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"Concurrency Student\",\"email\":\"$AUDIT_EMAIL\",\"password\":\"$AUDIT_PASSWORD\"}")
+
+TOKEN=$(printf '%s' "$AUTH_JSON" | jq -er '.token')
+STUDENT_ID=$(printf '%s' "$AUTH_JSON" | jq -er '.user.student_id')
+COURSE_ID=$(curl -fsS "$BASE_URL/courses" |
+  jq -er '.[] | select(.code == "CS101") | .id' | head -n 1)
+```
+
+`POST /auth/register` and `GET /courses` are public. Every protected request
+below includes `Authorization: Bearer $TOKEN`.
+
+## Test 1: enrollment uniqueness race
+
+The temporary student has no academic history, so seeded CS101 is eligible.
+All 25 requests use the canonical semester `2028-Fall`. The request body
+contains only `course_id` and `semester`; it does not send `student_id` or
+`status`.
+
+```sh
+RACE_DIR=$(mktemp -d)
+
 for i in $(seq 1 25); do
-  curl -s -o "/tmp/enroll_race/resp_$i.json" -w "%{http_code}\n" -X POST http://localhost:8080/enrollments \
+  curl -sS -o "$RACE_DIR/response_$i.json" -w "%{http_code}\n" \
+    -X POST "$BASE_URL/enrollments" \
+    -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    -d '{"student_id": 1, "course_id": 1, "semester": "2027-ConcurrencyTest-2"}' \
-    > "/tmp/enroll_race/status_$i.txt" &
+    -d "{\"course_id\":$COURSE_ID,\"semester\":\"2028-Fall\"}" \
+    > "$RACE_DIR/status_$i.txt" &
 done
 wait
-cat /tmp/enroll_race/status_*.txt | sort | uniq -c
+
+cat "$RACE_DIR"/status_*.txt | sort | uniq -c
 ```
 
-Real output:
+Expected result for a clean run:
 
-```
+```text
       1 201
      24 409
 ```
 
-The winning `201` body:
-
-```json
-{"course_id":1,"enrolled_at":"2026-07-22 13:50:55.440731","id":70,"semester":"2027-ConcurrencyTest-2","status":"planned","student_id":1}
-```
-
-A sample `409` body (identical for all 24 losers):
-
-```json
-{"error":"Enrollment already exists for this student, course, and semester"}
-```
-
-Server survival + row-count check:
+Verify that the authenticated student's plan contains exactly one matching
+row:
 
 ```sh
-curl -s -w "\n%{http_code}\n" http://localhost:8080/students/1/profile
+curl -fsS "$BASE_URL/enrollments/planned" \
+  -H "Authorization: Bearer $TOKEN" |
+  jq --argjson course_id "$COURSE_ID" \
+    '[.[] | select(.course_id == $course_id and .semester == "2028-Fall")] | length'
 ```
-```
-{"current_gpa":86.5,...,"student_number":"S2026001","year_level":3}
-200
-```
+
+The command must print `1`. Remove the winning planned enrollment through the
+authorized API:
 
 ```sh
-docker compose exec db psql -U advisor -d smart_university_advisor -c \
-  "SELECT count(*) FROM enrollments WHERE student_id = 1 AND course_id = 1 AND semester LIKE '2027-ConcurrencyTest%';"
-```
-```
- count
--------
-     2
-(1 row)
+ENROLLMENT_ID=$(curl -fsS "$BASE_URL/enrollments/planned" \
+  -H "Authorization: Bearer $TOKEN" |
+  jq -er --argjson course_id "$COURSE_ID" \
+    '.[] | select(.course_id == $course_id and .semester == "2028-Fall") | .id')
+
+curl -fsS -X DELETE "$BASE_URL/enrollments/$ENROLLMENT_ID" \
+  -H "Authorization: Bearer $TOKEN"
+
+rm -rf "$RACE_DIR"
 ```
 
-(2, not 1, because this test was run twice against two distinct semester
-strings — `2027-ConcurrencyTest` and `2027-ConcurrencyTest-2` — while
-iterating on the verification command itself; each run independently
-produced exactly one row for its own semester, i.e. the uniqueness
-constraint held on both runs, not just one.)
+## Test 2: Agent request isolation with mocked Gemini
 
-Test rows were deleted afterward:
+This section is **mocked Gemini concurrency evidence**, not a live Gemini test.
+The real Drogon `/agent/query` route, JWT filter, Agent state, and Gemini HTTP
+client execute normally, but `test/mock_gemini_server.js` supplies the model
+response. The mock performs no tool calls in this scenario.
+
+Start the mock and recreate only the API service with the local mock endpoint:
 
 ```sh
-docker compose exec db psql -U advisor -d smart_university_advisor -c \
-  "DELETE FROM enrollments WHERE student_id = 1 AND course_id = 1 AND semester LIKE '2027-ConcurrencyTest%';"
-```
-```
-DELETE 2
+MOCK_GEMINI_PORT=5050 node test/mock_gemini_server.js \
+  > /tmp/smart-university-mock-gemini.log 2>&1 &
+MOCK_GEMINI_PID=$!
+
+GEMINI_API_HOST=http://host.docker.internal:5050 \
+GEMINI_API_KEY=mock-only-not-a-real-key \
+GEMINI_MODEL=mock-model \
+docker compose up --build -d --force-recreate api
+
+# Recreating the API changes its process boot ID, so obtain a fresh JWT.
+AUTH_JSON=$(curl -fsS -X POST "$BASE_URL/auth/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$AUDIT_EMAIL\",\"password\":\"$AUDIT_PASSWORD\"}")
+TOKEN=$(printf '%s' "$AUTH_JSON" | jq -er '.token')
+STUDENT_ID=$(printf '%s' "$AUTH_JSON" | jq -er '.user.student_id')
 ```
 
-**Result: no crash, exactly one winner per burst, no duplicate rows, no partial state.**
-
-## Test 2: `/agent/query` cross-talk under real concurrency
-
-Setup — mock server, then the `api` container rebuilt/restarted pointing at it:
+Run 20 authenticated requests with distinct messages:
 
 ```sh
-node test/mock_gemini_server.js &
-docker compose stop api
-GEMINI_API_HOST=http://host.docker.internal:5050 GEMINI_API_KEY=test-key GEMINI_MODEL=test-model \
-  docker compose up --build -d api
-```
+AGENT_DIR=$(mktemp -d)
 
-Sanity check (single request):
-
-```sh
-curl -s -w "\n%{http_code}\n" -X POST http://localhost:8080/agent/query \
-  -H "Content-Type: application/json" -d '{"student_id": 7, "message": "test message 7"}'
-```
-```
-{"answer":"Echo: 7","message":"test message 7","status":"ok","student_id":7,"tools_used":[]}
-200
-```
-
-### 10 concurrent requests, distinct `student_id`s
-
-```sh
-for sid in $(seq 1 10); do
-  curl -s -o "/tmp/agent_concurrency/resp_$sid.json" -X POST http://localhost:8080/agent/query \
+for i in $(seq 1 20); do
+  curl -fsS -o "$AGENT_DIR/response_$i.json" \
+    -X POST "$BASE_URL/agent/query" \
+    -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"student_id\": $sid, \"message\": \"test message $sid\"}" &
+    -d "{\"message\":\"concurrency message $i\"}" &
 done
 wait
-```
 
-Real responses (`requested=<sid sent> -> <body received>`):
-
-```
-requested=1 -> {"answer":"Echo: 1","message":"test message 1","status":"ok","student_id":1,"tools_used":[]}
-requested=2 -> {"answer":"Echo: 2","message":"test message 2","status":"ok","student_id":2,"tools_used":[]}
-requested=3 -> {"answer":"Echo: 3","message":"test message 3","status":"ok","student_id":3,"tools_used":[]}
-requested=4 -> {"answer":"Echo: 4","message":"test message 4","status":"ok","student_id":4,"tools_used":[]}
-requested=5 -> {"answer":"Echo: 5","message":"test message 5","status":"ok","student_id":5,"tools_used":[]}
-requested=6 -> {"answer":"Echo: 6","message":"test message 6","status":"ok","student_id":6,"tools_used":[]}
-requested=7 -> {"answer":"Echo: 7","message":"test message 7","status":"ok","student_id":7,"tools_used":[]}
-requested=8 -> {"answer":"Echo: 8","message":"test message 8","status":"ok","student_id":8,"tools_used":[]}
-requested=9 -> {"answer":"Echo: 9","message":"test message 9","status":"ok","student_id":9,"tools_used":[]}
-requested=10 -> {"answer":"Echo: 10","message":"test message 10","status":"ok","student_id":10,"tools_used":[]}
-```
-
-Every response's `student_id` and `answer` match the request that produced
-it — no cross-talk.
-
-### 20 concurrent requests, distinct `student_id`s, timed
-
-```sh
-time (
-for sid in $(seq 1 20); do
-  curl -s -o "/tmp/agent_concurrency/resp_$sid.json" -X POST http://localhost:8080/agent/query \
-    -H "Content-Type: application/json" \
-    -d "{\"student_id\": $sid, \"message\": \"test message $sid\"}" &
+for i in $(seq 1 20); do
+  jq -e --arg expected "concurrency message $i" \
+    --argjson student_id "$STUDENT_ID" \
+    '.status == "ok" and .message == $expected and
+     .student_id == $student_id and .tools_used == []' \
+    "$AGENT_DIR/response_$i.json" > /dev/null
 done
-wait
-)
+
+echo "All mocked Agent responses matched their request and JWT-owned student."
+rm -rf "$AGENT_DIR"
 ```
 
-Real output:
-
-```
-real    0m0.836s
-user    0m0.136s
-sys     0m0.167s
-```
-
-All 20 responses matched their own request's `student_id` and expected
-`Echo: <sid>` answer (verified programmatically, `mismatch flag: 0`). The
-mock server's per-request delay is randomized 50–250ms; 20 requests
-completing in 0.836s wall time (rather than the ~1.5–3s a serialized
-50–250ms-per-request chain would take) is consistent with the 4 requests
-genuinely overlapping in flight across the 4 IO threads, not a
-single-threaded callback chain processing them one at a time.
-
-Cleanup — mock server killed, `api` container rebuilt back onto the default
-(real) Gemini host:
+Restore the normal Gemini configuration and stop the mock:
 
 ```sh
-docker compose stop api
-docker compose up --build -d api
-docker compose exec api sh -c 'echo $GEMINI_API_HOST'
-```
-```
-https://generativelanguage.googleapis.com
+kill "$MOCK_GEMINI_PID"
+docker compose up --build -d --force-recreate api
 ```
 
-**Result: no cross-talk across 30 total concurrent requests (10 + 20) with
-distinct `student_id`s — `shared_ptr<AgentState>` isolation held under real
-multi-threaded parallelism.**
+Live Gemini evidence is separate and is labeled **Live Gemini verification** in
+`docs/agent-demo.md`. Do not present this mocked concurrency procedure as live
+Gemini evidence.
 
-## Summary
+## Cleanup
 
-| Test | Config | Result |
-| --- | --- | --- |
-| 25x concurrent identical `POST /enrollments` | 4 threads, DB pool 4 | Exactly 1×201, 24×409, no crash, no duplicate row (confirmed twice) |
-| 10x concurrent `/agent/query`, distinct `student_id` | 4 threads, mock Gemini | 0 cross-talk |
-| 20x concurrent `/agent/query`, distinct `student_id` | 4 threads, mock Gemini | 0 cross-talk, 0.836s wall time (consistent with real overlap) |
+The enrollment is removed through the API above. The following local
+development-only cleanup removes the temporary registered account:
 
-Nothing broke under real concurrency in this run.
+```sh
+docker compose exec -T db psql \
+  -U "${DB_USER:-advisor}" \
+  -d "${DB_NAME:-smart_university_advisor}" \
+  -v email="$AUDIT_EMAIL" \
+  -c "DELETE FROM users WHERE email = :'email';"
+```
+
+The Agent is read-only throughout both mocked and live operation. Students
+create planned enrollments manually through My Plan, which sends only
+`course_id` and a canonical `semester`; the backend supplies the authenticated
+student identity.

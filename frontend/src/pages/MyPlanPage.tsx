@@ -6,7 +6,12 @@ import {
   removePlannedEnrollment,
 } from '../services/enrollmentApi'
 import { getAvailableCourses } from '../services/studentApi'
-import type { AvailableCourse, PlannedEnrollment } from '../types/student'
+import type {
+  EnrollmentCreationResponse,
+  PlannedEnrollmentListItem,
+} from '../types/enrollment'
+import type { AvailableCourseListItem } from '../types/student'
+import type { DifficultyLevel } from '../types/course'
 import LoadingState from '../components/LoadingState'
 import ErrorMessage from '../components/ErrorMessage'
 import EmptyState from '../components/EmptyState'
@@ -16,30 +21,88 @@ type State =
   | { status: 'error'; message: string }
   | {
       status: 'loaded'
-      enrollments: PlannedEnrollment[]
-      eligibleCourses: AvailableCourse[]
+      enrollments: PlannedEnrollmentListItem[]
+      eligibleCourses: AvailableCourseListItem[]
     }
 
-function isPlannedEnrollment(value: unknown): value is PlannedEnrollment {
-  if (!value || typeof value !== 'object') return false
-  const item = value as Partial<PlannedEnrollment>
-  return Number.isInteger(item.id) &&
-    Number.isInteger(item.course_id) &&
-    typeof item.course_code === 'string' &&
-    typeof item.course_name === 'string' &&
-    Number.isFinite(item.credits) &&
-    typeof item.semester === 'string' &&
-    item.status === 'planned'
+const semesterTermRank = {
+  Spring: 0,
+  Summer: 1,
+  Fall: 2,
+  Winter: 3,
+} as const
+
+function compareSemesters(left: string, right: string) {
+  const leftMatch = /^([0-9]{4})-(Spring|Summer|Fall|Winter)$/.exec(left)
+  const rightMatch = /^([0-9]{4})-(Spring|Summer|Fall|Winter)$/.exec(right)
+  if (!leftMatch || !rightMatch) return left.localeCompare(right)
+
+  const yearDifference = Number(leftMatch[1]) - Number(rightMatch[1])
+  if (yearDifference !== 0) return yearDifference
+
+  const leftTerm = leftMatch[2] as keyof typeof semesterTermRank
+  const rightTerm = rightMatch[2] as keyof typeof semesterTermRank
+  return semesterTermRank[leftTerm] - semesterTermRank[rightTerm]
 }
 
-function isAvailableCourse(value: unknown): value is AvailableCourse {
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) > 0
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
+}
+
+function isDifficulty(value: unknown): value is DifficultyLevel {
+  return value === 'easy' || value === 'medium' || value === 'hard'
+}
+
+function isCanonicalSemester(value: unknown): value is string {
+  return typeof value === 'string' &&
+    /^[0-9]{4}-(Spring|Summer|Fall|Winter)$/.test(value)
+}
+
+function isPlannedEnrollment(
+  value: unknown,
+): value is PlannedEnrollmentListItem {
   if (!value || typeof value !== 'object') return false
-  const item = value as Partial<AvailableCourse>
-  return Number.isInteger(item.id) &&
-    typeof item.code === 'string' &&
-    typeof item.name === 'string' &&
-    Number.isFinite(item.credits) &&
-    ['easy', 'medium', 'hard'].includes(item.difficulty_level ?? '')
+  const item = value as Partial<PlannedEnrollmentListItem>
+  return isPositiveInteger(item.id) &&
+    isPositiveInteger(item.student_id) &&
+    isPositiveInteger(item.course_id) &&
+    isNonEmptyString(item.course_code) &&
+    isNonEmptyString(item.course_name) &&
+    Number.isInteger(item.credits) &&
+    Number(item.credits) > 0 &&
+    isDifficulty(item.difficulty_level) &&
+    isCanonicalSemester(item.semester) &&
+    item.status === 'planned' &&
+    isNonEmptyString(item.enrolled_at)
+}
+
+function isAvailableCourse(value: unknown): value is AvailableCourseListItem {
+  if (!value || typeof value !== 'object') return false
+  const item = value as Partial<AvailableCourseListItem>
+  return isPositiveInteger(item.id) &&
+    isNonEmptyString(item.code) &&
+    isNonEmptyString(item.name) &&
+    isNonEmptyString(item.department) &&
+    Number.isInteger(item.credits) &&
+    Number(item.credits) > 0 &&
+    isDifficulty(item.difficulty_level)
+}
+
+function isEnrollmentCreationResponse(
+  value: unknown,
+): value is EnrollmentCreationResponse {
+  if (!value || typeof value !== 'object') return false
+  const item = value as Partial<EnrollmentCreationResponse>
+  return isPositiveInteger(item.id) &&
+    isPositiveInteger(item.student_id) &&
+    isPositiveInteger(item.course_id) &&
+    isCanonicalSemester(item.semester) &&
+    item.status === 'planned' &&
+    isNonEmptyString(item.enrolled_at)
 }
 
 export default function MyPlanPage() {
@@ -51,12 +114,16 @@ export default function MyPlanPage() {
   const [removingId, setRemovingId] = useState<number | null>(null)
   const [actionError, setActionError] = useState('')
   const [success, setSuccess] = useState('')
+  const [refreshWarning, setRefreshWarning] = useState('')
   const requestSequence = useRef(0)
+  const hasSuccessfullyLoaded = useRef(false)
 
   const load = useCallback(async () => {
     if (user?.student_id == null) return
     const sequence = ++requestSequence.current
-    setState({ status: 'loading' })
+    if (!hasSuccessfullyLoaded.current) {
+      setState({ status: 'loading' })
+    }
     try {
       const [enrollments, eligibleCourses] = await Promise.all([
         getPlannedEnrollments(),
@@ -69,19 +136,26 @@ export default function MyPlanPage() {
         throw new Error('The server returned malformed eligible-course data.')
       }
       if (sequence === requestSequence.current) {
+        hasSuccessfullyLoaded.current = true
+        setRefreshWarning('')
         setState({ status: 'loaded', enrollments, eligibleCourses })
       }
     } catch (error) {
       if (sequence === requestSequence.current) {
-        setState({
-          status: 'error',
-          message: error instanceof Error ? error.message : 'Unable to load My Plan.',
-        })
+        const message = error instanceof Error ? error.message : 'Unable to load My Plan.'
+        if (hasSuccessfullyLoaded.current) {
+          setRefreshWarning(`Unable to refresh My Plan. ${message}`)
+        } else {
+          setState({ status: 'error', message })
+        }
       }
     }
   }, [user?.student_id])
 
   useEffect(() => {
+    hasSuccessfullyLoaded.current = false
+    setRefreshWarning('')
+    setState({ status: 'loading' })
     void load()
     return () => {
       requestSequence.current += 1
@@ -90,11 +164,11 @@ export default function MyPlanPage() {
 
   const groups = useMemo(() => {
     if (state.status !== 'loaded') return []
-    const grouped = new Map<string, PlannedEnrollment[]>()
+    const grouped = new Map<string, PlannedEnrollmentListItem[]>()
     state.enrollments.forEach((item) =>
       grouped.set(item.semester, [...(grouped.get(item.semester) ?? []), item]),
     )
-    return Array.from(grouped).sort(([left], [right]) => left.localeCompare(right))
+    return Array.from(grouped).sort(([left], [right]) => compareSemesters(left, right))
   }, [state])
 
   async function add(event: FormEvent<HTMLFormElement>) {
@@ -105,7 +179,10 @@ export default function MyPlanPage() {
     setActionError('')
     setSuccess('')
     try {
-      await createPlannedEnrollment(courseId, semester)
+      const created = await createPlannedEnrollment(courseId, semester)
+      if (!isEnrollmentCreationResponse(created)) {
+        throw new Error('The server returned malformed enrollment-creation data.')
+      }
       setSelectedCourseId('')
       setSuccess('Course added to My Plan.')
       await load()
@@ -149,6 +226,14 @@ export default function MyPlanPage() {
       {state.status === 'loading' && <LoadingState label="Loading My Plan..." />}
       {state.status === 'error' && (
         <ErrorMessage message={state.message} onRetry={() => void load()} />
+      )}
+      {refreshWarning && state.status === 'loaded' && (
+        <div className="state-panel state-warning" role="status">
+          <p>{refreshWarning} Your last loaded plan is still displayed.</p>
+          <button type="button" className="retry-button" onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
       )}
       {actionError && <ErrorMessage message={actionError} />}
       {success && <p className="success-message" role="status">{success}</p>}

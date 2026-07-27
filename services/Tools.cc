@@ -142,8 +142,9 @@ Json::Value GetAcademicSummaryTool::declaration() const
     parameters["required"] = required;
     return declareTool(
         "get_academic_summary",
-        "Get a student's academic summary: current GPA, and counts of "
-        "completed/active/failed courses and completed credits.",
+        "Get a student's academic summary with clearly separated completed, "
+        "active, and planned course records, plus current GPA, course counts, "
+        "failed-course count, and completed credits.",
         parameters);
 }
 

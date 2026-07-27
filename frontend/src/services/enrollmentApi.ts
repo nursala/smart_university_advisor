@@ -1,12 +1,15 @@
 import { apiRequest } from './api'
-import type { PlannedEnrollment } from '../types/student'
+import type {
+  EnrollmentCreationResponse,
+  PlannedEnrollmentListItem,
+} from '../types/enrollment'
 
 export function getPlannedEnrollments() {
-  return apiRequest<PlannedEnrollment[]>('/enrollments/planned')
+  return apiRequest<PlannedEnrollmentListItem[]>('/enrollments/planned')
 }
 
 export function createPlannedEnrollment(courseId: number, semester: string) {
-  return apiRequest<PlannedEnrollment>('/enrollments', {
+  return apiRequest<EnrollmentCreationResponse>('/enrollments', {
     method: 'POST',
     body: { course_id: courseId, semester },
   })

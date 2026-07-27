@@ -3,6 +3,7 @@ project(smart_university_advisor_test CXX)
 
 add_executable(${PROJECT_NAME}
     test_main.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../services/AgentLoop.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/ToolRegistry.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/Tools.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../services/StudentService.cc

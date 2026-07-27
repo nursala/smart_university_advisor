@@ -328,6 +328,16 @@ button:disabled {
   border-color: transparent;
 }
 
+.state-warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-color: transparent;
+}
+
+.state-warning .retry-button {
+  background: var(--warning-text);
+}
+
 .state-empty {
   background: var(--conversation-bg);
   color: var(--muted);

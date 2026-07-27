@@ -127,12 +127,9 @@ CREATE TABLE enrollments (
     CONSTRAINT chk_enrollments_status
         CHECK (status IN ('planned', 'active', 'completed', 'dropped')),
 
-    -- Existing historical seed semesters predate this canonical format.
-    -- NOT VALID preserves those rows while enforcing the format for all
-    -- newly inserted or updated enrollments.
+    -- Supported semesters use a canonical term and a year from 2000 to 2100.
     CONSTRAINT chk_enrollments_semester_format
-        CHECK (semester ~ '^[0-9]{4}-(Spring|Summer|Fall|Winter)$')
-        NOT VALID,
+        CHECK (semester ~ '^(20[0-9]{2}|2100)-(Spring|Summer|Fall|Winter)$'),
 
     CONSTRAINT uq_student_course_semester
         UNIQUE (student_id, course_id, semester)

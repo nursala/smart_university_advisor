@@ -1,7 +1,7 @@
 import { apiRequest } from './api'
 import type {
   AcademicSummary,
-  AvailableCourse,
+  AvailableCourseListItem,
   CourseRecommendationsResponse,
   RiskAnalysisResponse,
   SemesterPlanResponse,
@@ -18,7 +18,9 @@ export function getAcademicSummary(studentId: number) {
 }
 
 export function getAvailableCourses(studentId: number) {
-  return apiRequest<AvailableCourse[]>(`/students/${studentId}/available-courses`)
+  return apiRequest<AvailableCourseListItem[]>(
+    `/students/${studentId}/available-courses`,
+  )
 }
 
 export function getCourseRecommendations(

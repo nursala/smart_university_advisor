@@ -19,26 +19,13 @@ export type AcademicSummary = {
   current_gpa: number | null
 }
 
-export type PlannedEnrollment = {
-  id: number
-  student_id: number
-  course_id: number
-  course_code: string
-  course_name: string
-  credits: number
-  difficulty_level: DifficultyLevel
-  semester: string
-  status: 'planned'
-  enrolled_at: string
-}
-
-export type AvailableCourse = {
+export type AvailableCourseListItem = {
   id: number
   code: string
   name: string
+  department: string
   credits: number
   difficulty_level: DifficultyLevel
-  estimated_weekly_hours: number
 }
 
 export type CourseRecommendation = {
