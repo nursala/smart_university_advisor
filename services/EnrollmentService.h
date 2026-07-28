@@ -33,4 +33,9 @@ class EnrollmentService
         const drogon::orm::DbClientPtr &database,
         int64_t enrollmentId,
         std::function<void(ServiceResult)> &&callback);
+
+    static void findForRemoval(
+        const drogon::orm::DbClientPtr &database,
+        int64_t enrollmentId,
+        std::function<void(ServiceResult)> &&callback);
 };

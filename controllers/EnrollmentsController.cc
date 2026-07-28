@@ -153,21 +153,21 @@ void EnrollmentsController::remove(
 {
     const auto identity = AuthorizationService::identity(request);
     auto database = drogon::app().getDbClient();
-    database->execSqlAsync(
-        "SELECT student_id, status FROM enrollments WHERE id = $1",
+    EnrollmentService::findForRemoval(
+        database,
+        enrollmentId,
         [database, callback, identity, enrollmentId](
-            const drogon::orm::Result &result) {
-            if (result.empty())
+            ServiceResult lookupResult) {
+            if (lookupResult.status != ServiceResult::Status::Ok)
             {
-                callback(toHttpResponse(
-                    ServiceResult::notFound("Enrollment not found")));
+                callback(toHttpResponse(lookupResult));
                 return;
             }
             int64_t authorizedStudentId = 0;
             std::string error;
             if (!AuthorizationService::authorizeStudent(
                     identity,
-                    result.front()["student_id"].as<int64_t>(),
+                    lookupResult.data["student_id"].asInt64(),
                     authorizedStudentId,
                     error))
             {
@@ -175,7 +175,7 @@ void EnrollmentsController::remove(
                 return;
             }
             if (!AuthorizationService::isStaff(identity) &&
-                result.front()["status"].as<std::string>() != "planned")
+                lookupResult.data["status"].asString() != "planned")
             {
                 callback(errorResponse(
                     "Students may delete only planned enrollments",
@@ -188,12 +188,5 @@ void EnrollmentsController::remove(
                 [callback](ServiceResult serviceResult) {
                     callback(toHttpResponse(serviceResult));
                 });
-        },
-        [callback](const drogon::orm::DrogonDbException &exception) {
-            LOG_ERROR << "Failed to authorize enrollment deletion: "
-                      << exception.base().what();
-            callback(errorResponse("Unable to authorize enrollment",
-                                   drogon::k500InternalServerError));
-        },
-        enrollmentId);
+        });
 }
