@@ -15,8 +15,15 @@ The API listens on `http://localhost:8080`:
 curl http://localhost:8080/courses
 ```
 
-PostgreSQL is available to local tools at `localhost:5433`; the API uses the
-internal Docker network and connects to `db:5432`.
+PostgreSQL is normally reachable from host tools at `localhost:5433` with the
+`advisor`/`advisor_password` credentials above; the API itself always uses the
+internal Docker network and connects to `db:5432`. Host-side access through the
+forwarded port depends on the local Docker networking setup -- some Docker
+Desktop/WSL2 configurations have been observed to reject those same credentials
+over the forwarded port even though they work container-internally. If
+`psql -h localhost -p 5433 -U advisor -d smart_university_advisor` fails on your
+machine, connect via `docker compose exec db psql -U advisor -d
+smart_university_advisor` instead.
 
 Optional database settings can be overridden with `DB_NAME`, `DB_USER`, and
 `DB_PASSWORD`. Their defaults are `smart_university_advisor`, `advisor`, and
@@ -104,6 +111,29 @@ Key constraints: `students.year_level` 1–6, `students.current_gpa` 0–100,
 `enrollments.status` in (`planned`, `active`, `completed`, `dropped`), a
 `UNIQUE (student_id, course_id, semester)` on `enrollments`, and a
 `UNIQUE (enrollment_id)` on `grades` (one grade per enrollment).
+
+## Architecture decisions
+
+The course's layering material teaches a four-layer flow: Route → Service →
+Repository → (optional) Query. This project simplifies that to
+`Controller -> Service -> PostgreSQL`: each service (`StudentService`,
+`CourseService`, `EnrollmentService`, `UserService`) issues its own parameterized
+SQL and transactions directly against `drogon::orm::DbClientPtr` -- including
+multi-statement CTEs in `EnrollmentService` -- with no separate
+`repositories/`/`query/` layer. At this project's size (four services, seven
+tables) a Repository layer would only add a pass-through indirection without
+decoupling anything real, so the Service layer absorbs that responsibility
+directly.
+
+The course's model-generation material teaches an alternative to hand-written
+SQL: `drogon_ctl create model models --config=config.json` to generate ORM model
+classes per table. `models/model.json` here is only the generator config
+scaffold -- no generated `.h`/`.cc` model classes exist or compile anywhere;
+every query is hand-written parameterized SQL. This was a deliberate tradeoff:
+hand-written SQL is easier to read and debug line-for-line (particularly the
+CTE-based rules in `EnrollmentService`) than generated model code would be, at
+the cost of manually keeping queries in sync with schema changes instead of
+regenerating them.
 
 ## Endpoints
 
