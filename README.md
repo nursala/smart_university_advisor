@@ -240,7 +240,7 @@ labeled so mocked output cannot be mistaken for live evidence.
 | User management | Register/login/profile routes and PBKDF2/JWT services |
 | Docker Compose | [`docker-compose.yml`](docker-compose.yml) |
 | React TypeScript UI | [`frontend/src/App.tsx`](frontend/src/App.tsx) |
-| Layer organization | Controllers, filters, services, database, frontend, and tests directories |
+| Layer organization | `Controller -> Service -> PostgreSQL` (services call `drogon::orm::DbClientPtr` directly; there is no separate Repository layer) across controllers, filters, services, database, frontend, and tests directories |
 
 ## Known limitations
 

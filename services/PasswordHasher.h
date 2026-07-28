@@ -13,11 +13,13 @@
 // single self-describing string, so the iteration count can be raised
 // later without invalidating hashes stored with the old value.
 //
-// NOTE: the bcrypt-shaped hashes in database/seed.sql ($2b$12$...) were
-// decorative (never verified against a real login before this module
-// existed) and will NOT verify against this implementation. Seeded demo
-// accounts need a real password via POST /auth/register, or a reseed with
-// a PBKDF2 hash, before they can log in.
+// NOTE: database/seed.sql now stores real hashes produced by this scheme
+// (pbkdf2_sha256$210000$...), not the earlier decorative bcrypt-shaped
+// placeholders. The seeded demo accounts (adam@example.com, admin@example.com)
+// log in with their documented README passwords with no extra setup, as
+// long as the Postgres data volume was initialized from the current
+// database/seed.sql (see docs/development-database-reset.md if an older
+// volume is still in use).
 class PasswordHasher
 {
   public:

@@ -17,10 +17,10 @@ Current verified output:
 
 ```text
 ================================================================================
-All tests passed (44 assertions in 17 test cases).
+All tests passed (199 assertions in 34 test cases).
 ```
 
-Result: **17 test cases, 44 assertions, 0 failures**.
+Result: **34 test cases, 199 assertions, 0 failures**.
 
 The suite includes password hashing and verification, the seeded demo password
 hash, student/staff authorization rules, JWT issue/verify and rejection cases,
