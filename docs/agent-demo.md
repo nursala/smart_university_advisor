@@ -11,9 +11,10 @@ final addition through My Plan.
 
 ## Live Gemini verification
 
-**Evidence type: real Gemini.** Verified with
-`gemini-3.1-flash-lite` against a fresh isolated PostgreSQL database. The API
-key, JWT, and user/student identifiers are omitted.
+**Evidence type: real Gemini.** Re-verified 2026-07-28 with
+`gemini-3.1-flash-lite` against the docker-compose stack's seeded PostgreSQL
+database (`docker compose up --build -d`). The API key, JWT, and
+user/student identifiers are omitted.
 
 Live planning request:
 
@@ -46,14 +47,19 @@ Sanitized live response:
     "get_available_courses",
     "build_semester_plan"
   ],
-  "answer": "The student is a first-year Undeclared student with no completed credits or GPA yet. CS101 is currently eligible, and the synthesized plan contains CS101 for 4 credits and approximately 6 weekly hours, within the requested 12-credit maximum."
+  "answer": "Here is the review of your academic profile and the recommended plan:\n\n### Student Profile\n*   Department: Computer Science\n*   Year Level: 3\n*   Current GPA: 86.5\n\n### Academic Summary\n*   Completed Courses: 4 (CS101, CS102, CS201, CS202)\n*   Active Courses: 1 (CS302: Databases, 2026-Spring)\n*   Completed Credits: 16\n\n### Available Courses\nYou are eligible to take several Computer Science courses, including CS301 (Algorithms, Hard, 4 credits), CS303 (Operating Systems, Hard, 4 credits), CS304 (Web Development, Medium, 3 credits), CS305 (Software Engineering, Medium, 3 credits), CS306 (Computer Networks, Hard, 4 credits), and CS309 (Cyber Security, Medium, 3 credits).\n\n### Recommended Semester Plan (Max 12 Credits)\nTo balance your workload, three medium-difficulty courses totaling 9 credits: CS304, CS305, and CS309.\n\nTotal Credits: 9. Total Estimated Weekly Hours: 22.\n\nPlease note that I am unable to modify your academic records. To finalize these selections, please visit your \"My Plan\" page to add these courses to your schedule."
 }
 ```
 
-The enrollment count was `0` before and `0` after this read-only request.
-Gemini produced four meaningful function calls followed by a final synthesized
-answer, so the loop stopped normally in five model rounds—below the six-step
-cap.
+The enrollment count was `0` before and `0` after this read-only request (no
+planned enrollments existed for the test student in either the before or
+after check). Gemini produced four meaningful function calls, in the same
+order as the tool chain documented above, followed by a final synthesized
+answer—no repeated or out-of-order tool calls, and no attempt to call an
+enrollment-mutating tool (none exist; all eight registered tools are
+read-only). The loop stopped normally in five model rounds (four tool
+rounds plus one final-answer round)—below `AgentLoop`'s six-round cap
+(`kDefaultMaxToolRounds = 6`).
 
 ## Multi-tool planning scenario
 
