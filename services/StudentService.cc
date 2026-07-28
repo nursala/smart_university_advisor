@@ -553,6 +553,29 @@ void StudentService::buildSemesterPlan(
         studentId);
 }
 
+void StudentService::verifyExists(
+    const drogon::orm::DbClientPtr &database,
+    int64_t studentId,
+    std::function<void(ServiceResult)> &&callback)
+{
+    database->execSqlAsync(
+        "SELECT id FROM students WHERE id = $1",
+        [callback](const drogon::orm::Result &students) {
+            if (students.empty())
+            {
+                callback(ServiceResult::notFound("Student not found"));
+                return;
+            }
+            callback(ServiceResult::ok(Json::Value()));
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to validate student: "
+                      << exception.base().what();
+            callback(ServiceResult::error("Unable to run risk analysis"));
+        },
+        studentId);
+}
+
 void StudentService::analyzeRisk(
     const drogon::orm::DbClientPtr &database,
     int64_t studentId,

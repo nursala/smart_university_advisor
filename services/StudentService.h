@@ -50,6 +50,11 @@ class StudentService
         const std::vector<int64_t> &courseIds,
         std::function<void(ServiceResult)> &&callback);
 
+    static void verifyExists(
+        const drogon::orm::DbClientPtr &database,
+        int64_t studentId,
+        std::function<void(ServiceResult)> &&callback);
+
     // Shared eligibility query (also used by CoursesController-adjacent
     // tools). Exposed so callers needing the raw available-course rows
     // (id, code, name, department, credits, difficulty_level,

@@ -174,13 +174,13 @@ void StudentsController::riskAnalysis(
 {
     if (!authorize(request, studentId, studentId, callback)) return;
     auto database = drogon::app().getDbClient();
-    database->execSqlAsync(
-        "SELECT id FROM students WHERE id = $1",
-        [database, callback, studentId, request](
-            const drogon::orm::Result &students) {
-            if (students.empty())
+    StudentService::verifyExists(
+        database,
+        studentId,
+        [database, callback, studentId, request](ServiceResult existsResult) {
+            if (existsResult.status != ServiceResult::Status::Ok)
             {
-                callback(errorResponse("Student not found", drogon::k404NotFound));
+                callback(toHttpResponse(existsResult));
                 return;
             }
 
@@ -224,11 +224,5 @@ void StudentsController::riskAnalysis(
                 [callback](ServiceResult result) {
                     callback(toHttpResponse(result));
                 });
-        },
-        [callback](const drogon::orm::DrogonDbException &exception) {
-            LOG_ERROR << "Failed to validate student: " << exception.base().what();
-            callback(errorResponse("Unable to run risk analysis",
-                                   drogon::k500InternalServerError));
-        },
-        studentId);
+        });
 }

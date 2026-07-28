@@ -388,6 +388,33 @@ void removeInTransaction(
 }
 }  // namespace
 
+void EnrollmentService::findForRemoval(
+    const drogon::orm::DbClientPtr &database,
+    int64_t enrollmentId,
+    std::function<void(ServiceResult)> &&callback)
+{
+    database->execSqlAsync(
+        "SELECT student_id, status FROM enrollments WHERE id = $1",
+        [callback](const drogon::orm::Result &result) {
+            if (result.empty())
+            {
+                callback(ServiceResult::notFound("Enrollment not found"));
+                return;
+            }
+            Json::Value value;
+            value["student_id"] =
+                Json::Int64(result.front()["student_id"].as<int64_t>());
+            value["status"] = result.front()["status"].as<std::string>();
+            callback(ServiceResult::ok(std::move(value)));
+        },
+        [callback](const drogon::orm::DrogonDbException &exception) {
+            LOG_ERROR << "Failed to authorize enrollment deletion: "
+                      << exception.base().what();
+            callback(ServiceResult::error("Unable to authorize enrollment"));
+        },
+        enrollmentId);
+}
+
 void EnrollmentService::remove(
     const drogon::orm::DbClientPtr &database,
     int64_t enrollmentId,
