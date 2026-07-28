@@ -15,6 +15,10 @@
             "log_level": "INFO"
         },
         "run_as_daemon": false,
-        "handle_sig_term": true
+        "handle_sig_term": true,
+        "float_precision_in_json": {
+            "precision": 15,
+            "precision_type": "significant"
+        }
     }
 }
