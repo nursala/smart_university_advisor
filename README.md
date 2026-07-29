@@ -123,7 +123,12 @@ multi-statement CTEs in `EnrollmentService` -- with no separate
 `repositories/`/`query/` layer. At this project's size (four services, seven
 tables) a Repository layer would only add a pass-through indirection without
 decoupling anything real, so the Service layer absorbs that responsibility
-directly.
+directly. One component sits outside that chain: `filters/JwtAuthFilter.cc`
+queries `students` directly to resolve the authenticated student id, because a
+Drogon filter runs *before* the request reaches a controller and so structurally
+cannot go through `Controller -> Service`. Filters are a cross-cutting layer
+rather than part of the main request chain, which is the usual exception in
+layered designs.
 
 The course's model-generation material teaches an alternative to hand-written
 SQL: `drogon_ctl create model models --config=config.json` to generate ORM model
@@ -134,6 +139,14 @@ hand-written SQL is easier to read and debug line-for-line (particularly the
 CTE-based rules in `EnrollmentService`) than generated model code would be, at
 the cost of manually keeping queries in sync with schema changes instead of
 regenerating them.
+
+One known gap, identified during review rather than chosen up front: the course's
+project-organization material recommends a top-level namespace, partly because a
+namespace is a natural candidate for later extraction into a separate library.
+Every class here is in the global namespace (aside from an incidental
+`ValidationHelpers`), and this was left as-is because wrapping every file is a
+large, low-value change for a single executable that is not being split into
+reusable libraries.
 
 ## Endpoints
 
@@ -239,7 +252,7 @@ final addition through My Plan.
 
 `POST /agent/query` runs a read-only agentic loop against Gemini with 8 function
 tools (declared in
-[`services/ToolRegistry.cc`](services/ToolRegistry.cc)), each backed by the
+[`services/Tools.cc`](services/Tools.cc)), each backed by the
 same service layer as the REST endpoints above:
 
 1. `get_student_profile` — a student's profile
@@ -262,9 +275,9 @@ labeled so mocked output cannot be mistaken for live evidence.
 | 10+ Drogon endpoints | 17 routes in controller headers and the endpoint table above |
 | PostgreSQL with 5+ related tables | 7 tables and 7 FKs in [`database/schema.sql`](database/schema.sql) |
 | ERD/schema documentation | Mermaid ERD above |
-| 8+ function tools | 8 read/analysis declarations in [`services/ToolRegistry.cc`](services/ToolRegistry.cc) |
+| 8+ function tools | 8 read/analysis declarations in [`services/Tools.cc`](services/Tools.cc) |
 | Gemini free API integration | Live `gemini-3.1-flash-lite` evidence in [`docs/agent-demo.md`](docs/agent-demo.md) |
-| Real agentic loop | Six-step-capped loop in [`controllers/AgentController.cc`](controllers/AgentController.cc) |
+| Real agentic loop | Six-step-capped loop in [`services/AgentLoop.h`](services/AgentLoop.h) |
 | Demonstrated 3+ tool chain | Four-tool sanitized live transcript in [`docs/agent-demo.md`](docs/agent-demo.md) |
 | Agent database operation | Intentionally not implemented: AI is read-only; authenticated students mutate planned records manually through My Plan |
 | User management | Register/login/profile routes and PBKDF2/JWT services |
