@@ -161,7 +161,7 @@ std::optional<JwtService::Claims> JwtService::verify(
     const auto expectedSignature = hmacSha256(secret_, signingInput);
     const auto expectedSignaturePart = base64UrlEncodeStr(expectedSignature);
 
-    if (signaturePart != expectedSignaturePart)
+    if (!constantTimeEqual(signaturePart, expectedSignaturePart))
     {
         return std::nullopt;
     }
