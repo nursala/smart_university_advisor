@@ -709,6 +709,11 @@ button:disabled {
   flex-direction: column;
   gap: 18px;
   padding: 24px 32px 28px;
+  /* Safety valve: on short viewports .conversation now refuses to shrink
+     below its min-height (see below), so the form as a whole can end up
+     taller than the space .chat-panel has. Scroll the form rather than
+     let .chat-panel's overflow:hidden silently clip the Send button. */
+  overflow-y: auto;
 }
 
 .message-field {
@@ -718,7 +723,13 @@ button:disabled {
 
 .conversation {
   flex: 1;
-  min-height: 0;
+  /* Previously min-height: 0, which let this shrink all the way to a
+     sliver on short viewports -- the message textarea below it has an
+     intrinsic minimum height it won't give up, so .conversation (the
+     part that actually matters) absorbed the entire squeeze instead. A
+     real floor keeps the conversation usable; .chat-form's overflow-y
+     above handles genuinely-too-short viewports instead. */
+  min-height: 160px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
