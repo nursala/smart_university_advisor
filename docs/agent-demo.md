@@ -11,10 +11,11 @@ final addition through My Plan.
 
 ## Live Gemini verification
 
-**Evidence type: real Gemini.** Re-verified 2026-07-28 with
-`gemini-3.1-flash-lite` against the docker-compose stack's seeded PostgreSQL
-database (`docker compose up --build -d`). The API key, JWT, and
-user/student identifiers are omitted.
+**Evidence type: real Gemini.** Re-verified 2026-07-31 with
+`gemini-3.1-flash-lite` against a genuinely fresh docker-compose stack
+(`docker compose down -v` then `docker compose up --build -d`, so the
+database was re-seeded from `database/seed.sql` before this run). The API
+key, JWT, and user/student identifiers are omitted.
 
 Live planning request:
 
@@ -47,19 +48,23 @@ Sanitized live response:
     "get_available_courses",
     "build_semester_plan"
   ],
-  "answer": "Here is the review of your academic profile and the recommended plan:\n\n### Student Profile\n*   Department: Computer Science\n*   Year Level: 3\n*   Current GPA: 86.5\n\n### Academic Summary\n*   Completed Courses: 4 (CS101, CS102, CS201, CS202)\n*   Active Courses: 1 (CS302: Databases, 2026-Spring)\n*   Completed Credits: 16\n\n### Available Courses\nYou are eligible to take several Computer Science courses, including CS301 (Algorithms, Hard, 4 credits), CS303 (Operating Systems, Hard, 4 credits), CS304 (Web Development, Medium, 3 credits), CS305 (Software Engineering, Medium, 3 credits), CS306 (Computer Networks, Hard, 4 credits), and CS309 (Cyber Security, Medium, 3 credits).\n\n### Recommended Semester Plan (Max 12 Credits)\nTo balance your workload, three medium-difficulty courses totaling 9 credits: CS304, CS305, and CS309.\n\nTotal Credits: 9. Total Estimated Weekly Hours: 22.\n\nPlease note that I am unable to modify your academic records. To finalize these selections, please visit your \"My Plan\" page to add these courses to your schedule."
+  "answer": "Here is the requested academic assessment and plan for <redacted> (Student ID: <redacted>):\n\n### Student Profile\n*   **Department:** Computer Science\n*   **Year Level:** 3\n*   **GPA:** 86.5\n*   **Max Weekly Credits:** 18\n\n### Academic Summary\n*   **Completed Courses:** 4 (CS101, CS102, CS201, CS202)\n*   **Active Courses:** 1 (CS302 - Databases, 4 credits)\n*   **Planned Courses:** 0\n*   **Completed Credits:** 16\n\n### Eligible Courses\nYou are eligible to take the following courses:\n*   CS301: Algorithms (4 credits, Hard)\n*   CS303: Operating Systems (4 credits, Hard)\n*   CS304: Web Development (3 credits, Medium)\n*   CS305: Software Engineering (3 credits, Medium)\n*   CS306: Computer Networks (4 credits, Hard)\n*   CS309: Cyber Security (3 credits, Medium)\n\n### Suggested Semester Plan (Max 12 Credits)\nTo balance your workload, the following plan is recommended, totaling 9 credits:\n1.  **Web Development (CS304)** - 3 credits\n2.  **Software Engineering (CS305)** - 3 credits\n3.  **Cyber Security (CS309)** - 3 credits\n\nThis selection focuses on medium-difficulty courses to complement your active coursework.\n\n**Note:** I am unable to modify your official academic records. Please visit the \"My Plan\" page to finalize and save these selections."
 }
 ```
 
-The enrollment count was `0` before and `0` after this read-only request (no
-planned enrollments existed for the test student in either the before or
-after check). Gemini produced four meaningful function calls, in the same
-order as the tool chain documented above, followed by a final synthesized
-answer—no repeated or out-of-order tool calls, and no attempt to call an
+The enrollment count was `0` both before and after this read-only request
+(`GET /enrollments/planned` returned `[]` immediately after the call, on a
+freshly seeded database where the test student has no planned enrollments).
+Gemini produced four meaningful function calls, in the same order as the
+tool chain documented above, followed by a final synthesized answer—no
+repeated or out-of-order tool calls, and no attempt to call an
 enrollment-mutating tool (none exist; all eight registered tools are
 read-only). The loop stopped normally in five model rounds (four tool
 rounds plus one final-answer round)—below `AgentLoop`'s six-round cap
-(`kDefaultMaxToolRounds = 6`).
+(`kDefaultMaxToolRounds = 6`). This run also exercised `AgentLoop`'s
+concurrent tool-dispatch path (services/AgentLoop.cc) rather than the
+older strictly-sequential version, with the same correct ordering
+guarantee in the tool trace above.
 
 ## Multi-tool planning scenario
 
