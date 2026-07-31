@@ -148,6 +148,29 @@ Every class here is in the global namespace (aside from an incidental
 large, low-value change for a single executable that is not being split into
 reusable libraries.
 
+Concurrency correctness in this project is enforced primarily at the database
+transaction level, not with in-process `std::mutex`/`std::atomic` guarding shared
+mutable state: `EnrollmentService` runs its mutating operations under
+`SET TRANSACTION ISOLATION LEVEL SERIALIZABLE` with `SELECT ... FOR UPDATE` row
+locks, and this is race-tested directly in
+[`docs/concurrency-test.md`](docs/concurrency-test.md) (25 concurrent enrollment
+attempts against the same open slot: exactly one wins). This was a deliberate
+choice, not an oversight: Drogon is a single-process async-event-loop server, so
+the actual concurrency risk in this domain is concurrent *requests* racing against
+the *database*, not shared in-process state, since each request's handler runs
+to its next `await`-equivalent point without another handler interleaving inside
+it on the same object. The one place genuine in-process concurrency exists is the
+agent tool-execution path: `AgentLoop::executeFunctionCalls`
+([`services/AgentLoop.cc`](services/AgentLoop.cc)) dispatches every tool call
+within a round concurrently rather than one at a time, since Gemini can request
+several independent tools in a single round with no data dependency between
+them. Because those callbacks can legitimately land on different Drogon IO
+threads at once, that path does use real C++ concurrency primitives: each
+callback writes into its own reserved slot in a shared results buffer (so no two
+threads ever write the same memory), and a `std::atomic<Json::ArrayIndex>`
+counter -- plus `AgentLoop`'s `std::atomic<bool> finished_` -- safely picks
+exactly one callback, whichever completes last, to resume the loop.
+
 ## Endpoints
 
 The application exposes 17 meaningful Drogon routes:
