@@ -2,6 +2,7 @@
 
 #include <json/json.h>
 
+#include <atomic>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -52,10 +53,12 @@ class AgentLoop : public std::enable_shared_from_this<AgentLoop>
     void requestFinalSynthesis();
     void handleToolRoundResponse(const Json::Value &response);
     void handleFinalSynthesisResponse(const Json::Value &response);
+    // Dispatches every function call in `functionCalls` concurrently --
+    // they are always independent within a single round -- and resumes
+    // the loop once the last one completes. See AgentLoop.cc for the
+    // ordering/synchronization contract.
     void executeFunctionCalls(
-        const std::shared_ptr<Json::Value> &functionCalls,
-        Json::ArrayIndex index,
-        const std::shared_ptr<Json::Value> &responseParts);
+        const std::shared_ptr<Json::Value> &functionCalls);
     bool parseResponse(
         const Json::Value &response,
         Json::Value &content,
@@ -73,5 +76,8 @@ class AgentLoop : public std::enable_shared_from_this<AgentLoop>
     ErrorCallback error_;
     std::size_t maxToolRounds_ = kDefaultMaxToolRounds;
     std::size_t toolRounds_ = 0;
-    bool finished_ = false;
+    // Concurrent tool dispatch means multiple completion callbacks can
+    // legitimately observe/set this from different Drogon IO threads at
+    // once (see executeFunctionCalls), so a plain bool is not safe here.
+    std::atomic<bool> finished_{false};
 };
