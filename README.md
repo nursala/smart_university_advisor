@@ -1,9 +1,49 @@
-# Smart University Advisor AI (C++)
+# Smart University Advisor
+**C++ · Drogon · PostgreSQL · React · TypeScript · Docker**
 
-Drogon and PostgreSQL backend for the Smart University Advisor project, with
-a Gemini-powered agentic advisor endpoint on top of the REST API.
+A full-stack academic planning application. Students browse courses, check prerequisite eligibility, manage a semester plan, and ask an AI advisor for recommendations grounded in their academic records.
 
-## Run
+## Project at a glance
+- **Backend:** REST endpoints, JWT authentication, role-aware authorization, and academic business rules.
+- **Database:** seven related PostgreSQL tables for users, students, courses, prerequisites, enrollments, instructors, and grades.
+- **Frontend:** course catalog, student profile, semester planning, and advisor chat.
+- **AI integration:** a bounded Gemini tool loop with eight read/analysis tools. Students confirm enrollment changes through the UI.
+- **Engineering documentation:** [agent transcripts](docs/agent-demo.md), [authentication checks](docs/auth-tests.md), and [concurrency behavior](docs/concurrency-test.md).
+
+## Quick start
+Install Docker with Compose, then:
+
+```bash
+git clone https://github.com/nursala/smart_university_advisor.git
+cd smart_university_advisor
+cp .env.example .env
+docker compose up --build
+```
+
+Configure `JWT_SECRET` in `.env`; add `GEMINI_API_KEY` to use the AI advisor. Keep local secrets out of Git.
+
+| Service | Local address |
+| --- | --- |
+| Web application | http://localhost:5173 |
+| REST API | http://localhost:8080 |
+| PostgreSQL host port | localhost:5433 |
+
+For local testing, create a student account through the registration page.
+
+## Explore the implementation
+| Area | Source |
+| --- | --- |
+| Routes and request handling | [controllers](controllers/) |
+| Business rules and agent loop | [services](services/) |
+| Authentication filter | [filters](filters/) |
+| Schema and sample records | [database](database/) |
+| User interface | [frontend](frontend/) |
+| Tests and integration scripts | [test](test/) |
+
+## Technical reference
+The sections below document the API, data model, authorization rules, and current limitations.
+
+### Backend connection details
 
 ```sh
 docker compose up
@@ -16,7 +56,7 @@ curl http://localhost:8080/courses
 ```
 
 PostgreSQL is normally reachable from host tools at `localhost:5433` with the
-`advisor`/`advisor_password` credentials above; the API itself always uses the
+configured local database credentials; the API itself always uses the
 internal Docker network and connects to `db:5432`. Host-side access through the
 forwarded port depends on the local Docker networking setup -- some Docker
 Desktop/WSL2 configurations have been observed to reject those same credentials
@@ -26,8 +66,7 @@ machine, connect via `docker compose exec db psql -U advisor -d
 smart_university_advisor` instead.
 
 Optional database settings can be overridden with `DB_NAME`, `DB_USER`, and
-`DB_PASSWORD`. Their defaults are `smart_university_advisor`, `advisor`, and
-`advisor_password`. The agent endpoint additionally requires `GEMINI_API_KEY`
+`DB_PASSWORD`. Set these values in your local environment using `.env.example`. The agent endpoint additionally requires `GEMINI_API_KEY`
 (and optionally `GEMINI_MODEL`, default `gemini-3.1-flash-lite`). Auth
 endpoints sign/verify session JWTs with `JWT_SECRET` (falls back to an
 insecure dev-only default if unset -- always set a real value outside local
@@ -228,12 +267,7 @@ then returns `{ "token": "...", "user": { ... } }`. New students start in
 department `Undeclared`, year 1, with a 20-credit limit and a NULL GPA
 (meaning no official grades yet).
 
-Development-only seeded credentials (never use outside local development):
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Student with academic history | `adam@example.com` | `DemoStudent2026!` |
-| Administrator | `admin@example.com` | `DemoStaff2026!` |
+Local demo accounts are defined in the database seed file. Create your own account to explore the student workflow.
 
 Students can read/analyze only their linked record, create and delete only
 their own planned enrollments, and cannot record grades. Advisors and
@@ -291,7 +325,7 @@ Sanitized live Gemini and deterministic mocked regression transcripts are in
 [`docs/agent-demo.md`](docs/agent-demo.md). Each transcript is explicitly
 labeled so mocked output cannot be mistaken for live evidence.
 
-## Submission rubric
+## Implementation evidence
 
 | Requirement | Evidence |
 | --- | --- |
