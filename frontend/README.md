@@ -1,32 +1,41 @@
-# React + TypeScript + Vite
+# Smart University Advisor — Frontend
+**React · TypeScript · Vite**
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The web client for [Smart University Advisor](../README.md). It provides a course catalog, registration/login, a student profile, semester planning, and AI advisor chat.
 
-Currently, two official plugins are available:
+## Run the complete application
+From the repository root:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+docker compose up --build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open **http://localhost:5173**. See the [root README](../README.md) for environment configuration and local demo credentials.
+
+## Frontend development
+From this directory:
+
+```bash
+npm ci
+cp .env.example .env
+npm run dev
+```
+
+The backend must also be running. `VITE_API_BASE_URL` controls the client API base URL; the example uses `/api`.
+
+## Commands
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Vite development server |
+| `npm run build` | TypeScript check and production build |
+| `npm run lint` | Oxlint checks |
+| `npm run preview` | Preview a production build |
+
+## Code map
+- `src/pages/`: catalog, authentication, profile, plan, and chat screens.
+- `src/services/`: typed API calls.
+- `src/auth/`: session state and route protection.
+- `src/chat/`: chat state retained during route navigation.
+- `src/components/`: shared layout and feedback components.
+
+Authentication uses `sessionStorage` and is validated through the backend. Chat messages are held in React memory and reset on page refresh or logout.
